@@ -10,6 +10,8 @@ import meteordevelopment.meteorclient.events.render.Render3DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.mixin.CrossbowItemAccessor;
 import meteordevelopment.meteorclient.pathing.PathManagers;
+import meteordevelopment.meteorclient.gui.utils.Anim;
+import meteordevelopment.meteorclient.renderer.Renderer3D;
 import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.friends.Friends;
@@ -24,6 +26,7 @@ import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.meteorclient.utils.world.TickRate;
 import meteordevelopment.orbit.EventHandler;
@@ -428,6 +431,48 @@ public class CrossbowRagebot extends Module {
         .build()
     );
 
+    private final Setting<Boolean> chanceColors = sgRender.add(new BoolSetting.Builder()
+        .name("chance-colors")
+        .description("Colors the path and the boxes by the hit chance: red when it is low, green when it is high.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> lockOn = sgRender.add(new BoolSetting.Builder()
+        .name("lock-on")
+        .description("Turning rings round the target, corners on the box where it will be and a line to it.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> groundRing = sgRender.add(new BoolSetting.Builder()
+        .name("ground-ring")
+        .description("Rings and a spreading wave on the ground under the target, and a beam of light.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> flightPulse = sgRender.add(new BoolSetting.Builder()
+        .name("flight-pulse")
+        .description("A light with a tail that runs along the path of the shot.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> shotTrails = sgRender.add(new BoolSetting.Builder()
+        .name("shot-trails")
+        .description("Shows the arrows on their way, and the path of arrows that are done fades away slowly.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> hitMarkers = sgRender.add(new BoolSetting.Builder()
+        .name("hit-markers")
+        .description("A green burst where an arrow hits and a small red ring where it misses.")
+        .defaultValue(true)
+        .build()
+    );
+
     private final Setting<SettingColor> pathColor = sgRender.add(new ColorSetting.Builder()
         .name("path-color")
         .description("The color of the path.")
@@ -554,6 +599,8 @@ public class CrossbowRagebot extends Module {
         pressedByUs = false;
         wasPathing = false;
         pendingShots.clear();
+        trails.clear();
+        markers.clear();
         knownArrows.clear();
         otherArrows.clear();
         tracks.clear();
@@ -1674,6 +1721,8 @@ public class CrossbowRagebot extends Module {
                 Math.abs(along), along > 0 ? "ahead of" : "behind", Math.abs(side), Math.abs(up), up > 0 ? "above" : "below");
         }
 
+        addFx(track, verdict, bestArrow, bestTarget);
+
         CrossbowRagebotLog l = log();
         if (l == null) return;
 
@@ -2233,24 +2282,265 @@ public class CrossbowRagebot extends Module {
 
     // Render
 
+    private static final long FX_START = System.nanoTime();
+
+    private final Color fx1 = new Color(), fx2 = new Color(), fx3 = new Color();
+    private final List<FxTrail> trails = new ArrayList<>();
+    private final List<FxMarker> markers = new ArrayList<>();
+
+    /** The path of an arrow that is done, it fades away. */
+    private record FxTrail(List<Vec3> points, double time, boolean hit) {
+    }
+
+    /** A flash where an arrow hit or missed. */
+    private record FxMarker(Vec3 at, double time, boolean hit) {
+    }
+
+    private static double fxNow() {
+        return (System.nanoTime() - FX_START) / 1e9;
+    }
+
+    /** Red when the shot is hopeless, over yellow, to green when it is sure. */
+    private static Color chanceColor(double chance, int alpha, Color out) {
+        double c = Mth.clamp(chance, 0, 1);
+        int red = c < 0.5 ? 255 : (int) (255 * (1 - (c - 0.5) * 2));
+        int green = c < 0.5 ? (int) (255 * c * 2) : 255;
+        return out.set(red, green, 70, Mth.clamp(alpha, 0, 255));
+    }
+
     @EventHandler
     private void onRender(Render3DEvent event) {
+        Renderer3D r = event.renderer;
+        double now = fxNow();
+        double chance = solution != null ? solution.hitChance : 0;
+
+        if (shotTrails.get()) drawTrails(r, now);
+        if (hitMarkers.get()) drawMarkers(r, now);
+        if (shotTrails.get()) drawFlights(r, now);
+
+        if (target != null && !target.isRemoved() && solution != null) {
+            if (lockOn.get()) drawLockOn(r, now, chance);
+            if (groundRing.get()) drawGroundRing(r, now, chance);
+        }
+
         if (!renderPath.get() || solution == null || solution.impact.path == null) return;
 
         List<Vec3> path = solution.impact.path;
+        Color line = chanceColors.get() ? chanceColor(chance, 210, fx1) : pathColor.get();
 
         for (int i = 1; i < path.size(); i++) {
             Vec3 a = path.get(i - 1), b = path.get(i);
-            event.renderer.line(a.x, a.y, a.z, b.x, b.y, b.z, pathColor.get());
+            r.line(a.x, a.y, a.z, b.x, b.y, b.z, line);
+        }
+
+        // Light that runs along the path, with a short tail
+        if (flightPulse.get() && path.size() > 1) {
+            double position = (now * 1.6) % 1.0 * (path.size() - 1);
+
+            for (int tail = 0; tail < 4; tail++) {
+                double p = position - tail * 0.35;
+                if (p < 0) continue;
+
+                int index = Math.min((int) p, path.size() - 2);
+                Vec3 a = path.get(index), b = path.get(index + 1);
+                double f = p - index;
+                double size = 0.09 * (1 - tail * 0.2);
+                double x = a.x + (b.x - a.x) * f, y = a.y + (b.y - a.y) * f, z = a.z + (b.z - a.z) * f;
+
+                fx2.set(255, 255, 255, 230 - tail * 55);
+                r.box(x - size, y - size, z - size, x + size, y + size, z + size, fx2, fx2, ShapeMode.Both, 0);
+            }
         }
 
         if (renderPrediction.get()) {
             AABB box = solution.predictedBox;
-            event.renderer.box(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, impactColor.get(), pathColor.get(), ShapeMode.Both, 0);
+            Color sides = chanceColors.get() ? chanceColor(chance, 60, fx2) : impactColor.get();
+            r.box(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, sides, line, ShapeMode.Both, 0);
+
+            if (lockOn.get()) {
+                drawBrackets(r, box.inflate(0.12), chanceColor(chance, 255, fx3));
+
+                // A line from where the target is to where it will be
+                if (target != null && !target.isRemoved()) {
+                    AABB now3 = target.getBoundingBox();
+                    chanceColor(chance, 40, fx2);
+                    chanceColor(chance, 230, fx3);
+                    r.line((now3.minX + now3.maxX) / 2, (now3.minY + now3.maxY) / 2, (now3.minZ + now3.maxZ) / 2,
+                        (box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2, (box.minZ + box.maxZ) / 2, fx2, fx3);
+                }
+            }
         }
 
         Vec3 end = solution.impact.point;
-        event.renderer.box(end.x - 0.25, end.y - 0.25, end.z - 0.25, end.x + 0.25, end.y + 0.25, end.z + 0.25, impactColor.get(), pathColor.get(), ShapeMode.Both, 0);
+        Color endSides = chanceColors.get() ? chanceColor(chance, 80, fx2) : impactColor.get();
+        r.box(end.x - 0.25, end.y - 0.25, end.z - 0.25, end.x + 0.25, end.y + 0.25, end.z + 0.25, endSides, line, ShapeMode.Both, 0);
+    }
+
+    /** A ring made of dashes, in the plane of u and v (unit vectors) round the centre. */
+    private static void ring(Renderer3D r, double cx, double cy, double cz, double ux, double uy, double uz, double vx, double vy, double vz,
+                             double radius, double phase, int segments, Color color) {
+        for (int i = 0; i < segments; i++) {
+            if ((i / 2) % 2 == 1) continue;
+
+            double a0 = phase + i * Math.PI * 2 / segments, a1 = phase + (i + 1) * Math.PI * 2 / segments;
+            double c0 = Math.cos(a0) * radius, s0 = Math.sin(a0) * radius, c1 = Math.cos(a1) * radius, s1 = Math.sin(a1) * radius;
+
+            r.line(cx + ux * c0 + vx * s0, cy + uy * c0 + vy * s0, cz + uz * c0 + vz * s0,
+                cx + ux * c1 + vx * s1, cy + uy * c1 + vy * s1, cz + uz * c1 + vz * s1, color);
+        }
+    }
+
+    /** Three rings that turn round the target like a gyroscope, and breathe. */
+    private void drawLockOn(Renderer3D r, double now, double chance) {
+        AABB box = target.getBoundingBox();
+        double cx = (box.minX + box.maxX) / 2, cy = (box.minY + box.maxY) / 2, cz = (box.minZ + box.maxZ) / 2;
+        double radius = Math.max(target.getBbWidth(), target.getBbHeight()) * 0.5 + 0.45 + 0.07 * Math.sin(now * 6);
+        Color color = chanceColor(chance, 235, fx1);
+
+        double spin = now * 2.4;
+        double turn = now * 1.1;
+
+        ring(r, cx, cy, cz, 1, 0, 0, 0, 0, 1, radius, spin, 36, color);
+        ring(r, cx, cy, cz, Math.cos(turn), 0, Math.sin(turn), 0, 1, 0, radius * 1.08, -spin * 0.8, 36, color);
+        ring(r, cx, cy, cz, Math.cos(turn + Math.PI / 2), 0, Math.sin(turn + Math.PI / 2), 0, 1, 0, radius * 0.92, spin * 1.3, 36, color);
+    }
+
+    /** Corners at the eight corners of a box. */
+    private void drawBrackets(Renderer3D r, AABB box, Color color) {
+        double lx = Math.min(0.3, (box.maxX - box.minX) * 0.3), ly = Math.min(0.3, (box.maxY - box.minY) * 0.3), lz = Math.min(0.3, (box.maxZ - box.minZ) * 0.3);
+
+        for (int xi = 0; xi < 2; xi++) {
+            for (int yi = 0; yi < 2; yi++) {
+                for (int zi = 0; zi < 2; zi++) {
+                    double x = xi == 0 ? box.minX : box.maxX, y = yi == 0 ? box.minY : box.maxY, z = zi == 0 ? box.minZ : box.maxZ;
+                    double dx = xi == 0 ? lx : -lx, dy = yi == 0 ? ly : -ly, dz = zi == 0 ? lz : -lz;
+
+                    r.line(x, y, z, x + dx, y, z, color);
+                    r.line(x, y, z, x, y + dy, z, color);
+                    r.line(x, y, z, x, y, z + dz, color);
+                }
+            }
+        }
+    }
+
+    /** Rings on the ground under the target, a wave that spreads from it and a beam of light up. */
+    private void drawGroundRing(Renderer3D r, double now, double chance) {
+        AABB box = target.getBoundingBox();
+        double cx = (box.minX + box.maxX) / 2, cz = (box.minZ + box.maxZ) / 2;
+        double y = solution.detail.ground() + 0.03;
+        double size = Math.max(target.getBbWidth(), 0.6);
+
+        Color color = chanceColor(chance, 220, fx1);
+        ring(r, cx, y, cz, 1, 0, 0, 0, 0, 1, size * 1.1, now * 1.8, 40, color);
+        ring(r, cx, y, cz, 1, 0, 0, 0, 0, 1, size * 1.5, -now * 1.2, 48, color);
+
+        // The wave
+        double wave = (now * 0.8) % 1.0;
+        chanceColor(chance, (int) (200 * (1 - wave)), fx2);
+        ring(r, cx, y, cz, 1, 0, 0, 0, 0, 1, size * (0.5 + wave * 2.5), 0, 64, fx2);
+
+        // The beam: two crossed strips that fade out upwards
+        double h = 2.2 + 0.3 * Math.sin(now * 3);
+        chanceColor(chance, 70, fx2);
+        chanceColor(chance, 0, fx3);
+        double w = size * 0.55;
+        r.quad(cx - w, y, cz, cx - w, y + h, cz, cx + w, y + h, cz, cx + w, y, cz, fx2, fx3, fx3, fx2);
+        r.quad(cx, y, cz - w, cx, y + h, cz - w, cx, y + h, cz + w, cx, y, cz + w, fx2, fx3, fx3, fx2);
+    }
+
+    /** The arrows that are on their way, with a bright head. */
+    private void drawFlights(Renderer3D r, double now) {
+        for (Track track : tracks.values()) {
+            List<Vec3> points = track.arrow;
+            if (points.size() < 2) continue;
+
+            chanceColor(track.shot.solution.hitChance, 210, fx1);
+
+            for (int i = 1; i < points.size(); i++) {
+                Vec3 a = points.get(i - 1), b = points.get(i);
+                r.line(a.x, a.y, a.z, b.x, b.y, b.z, fx1);
+            }
+
+            Vec3 head = points.get(points.size() - 1);
+            double size = 0.12 + 0.03 * Math.sin(now * 20);
+            fx2.set(255, 255, 255, 240);
+            r.box(head.x - size, head.y - size, head.z - size, head.x + size, head.y + size, head.z + size, fx2, fx2, ShapeMode.Both, 0);
+        }
+    }
+
+    /** The paths of arrows that are done, they fade away in a couple of seconds. */
+    private void drawTrails(Renderer3D r, double now) {
+        for (int i = trails.size() - 1; i >= 0; i--) {
+            FxTrail trail = trails.get(i);
+            double age = now - trail.time;
+
+            if (age > 2.5) {
+                trails.remove(i);
+                continue;
+            }
+
+            int alpha = (int) (200 * (1 - age / 2.5));
+            if (trail.hit) fx1.set(90, 255, 140, alpha);
+            else fx1.set(255, 120, 90, alpha);
+
+            for (int p = 1; p < trail.points.size(); p++) {
+                Vec3 a = trail.points.get(p - 1), b = trail.points.get(p);
+                r.line(a.x, a.y, a.z, b.x, b.y, b.z, fx1);
+            }
+        }
+    }
+
+    /** A ring that spreads from where the arrow hit (with sparks) or missed. */
+    private void drawMarkers(Renderer3D r, double now) {
+        for (int i = markers.size() - 1; i >= 0; i--) {
+            FxMarker marker = markers.get(i);
+            double age = now - marker.time;
+
+            if (age > 1.0) {
+                markers.remove(i);
+                continue;
+            }
+
+            double t = Anim.easeOutCubic(age);
+            double radius = (marker.hit ? 0.3 + t * 2.2 : 0.2 + t * 1.0);
+            int alpha = (int) (255 * (1 - age));
+
+            if (marker.hit) fx1.set(90, 255, 140, alpha);
+            else fx1.set(255, 110, 90, alpha);
+
+            Vec3 p = marker.at;
+            ring(r, p.x, p.y, p.z, 1, 0, 0, 0, 0, 1, radius, age * 4, 40, fx1);
+            ring(r, p.x, p.y, p.z, 1, 0, 0, 0, 1, 0, radius * 0.8, 0, 32, fx1);
+            ring(r, p.x, p.y, p.z, 0, 0, 1, 0, 1, 0, radius * 0.8, 0, 32, fx1);
+
+            if (marker.hit) {
+                // Sparks
+                for (int s = 0; s < 12; s++) {
+                    double a = s * Math.PI * 2 / 12 + 0.4, b = (s % 3 - 1) * 0.5;
+                    double x = Math.cos(a) * Math.cos(b), y = Math.sin(b), z = Math.sin(a) * Math.cos(b);
+                    r.line(p.x + x * radius * 0.6, p.y + y * radius * 0.6, p.z + z * radius * 0.6, p.x + x * radius * 1.3, p.y + y * radius * 1.3, p.z + z * radius * 1.3, fx1);
+                }
+            }
+        }
+    }
+
+    /** Called when an arrow is done: keeps its path and puts a flash where it ended. */
+    private void addFx(Track track, String verdict, Vec3 arrowEnd, Vec3 targetThen) {
+        if (track.arrow.size() < 2) return;
+
+        boolean hit = verdict.startsWith("HIT");
+        double now = fxNow();
+
+        if (shotTrails.get()) {
+            trails.add(new FxTrail(new ArrayList<>(track.arrow), now, hit));
+            while (trails.size() > 40) trails.removeFirst();
+        }
+
+        if (hitMarkers.get()) {
+            Vec3 at = hit && targetThen != null ? targetThen : arrowEnd != null ? arrowEnd : track.arrow.getLast();
+            markers.add(new FxMarker(at, now, hit));
+            while (markers.size() > 40) markers.removeFirst();
+        }
     }
 
     /** The entity that is shot at, or null. */
