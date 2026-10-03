@@ -6,8 +6,10 @@
 package meteordevelopment.meteorclient.systems.modules.movement;
 
 import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.events.entity.player.PlayerMoveEvent;
 import meteordevelopment.meteorclient.events.render.Render2DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
+import meteordevelopment.meteorclient.mixininterface.IVec3;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
@@ -16,6 +18,7 @@ import meteordevelopment.meteorclient.utils.i18n.LanguageManager;
 import meteordevelopment.meteorclient.utils.network.MeteorExecutor;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
+import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -27,6 +30,8 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.Fireworks;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.FireworkRocketItem;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
@@ -66,6 +71,7 @@ public class ElytraNavigator extends Module {
     private final SettingGroup sgAltitude = settings.createGroup("Altitude");
     private final SettingGroup sgNavigation = settings.createGroup("Navigation");
     private final SettingGroup sgFireworks = settings.createGroup("Fireworks");
+    private final SettingGroup sgOverride = settings.createGroup("Speed Override");
     private final SettingGroup sgSafety = settings.createGroup("Safety");
     private final SettingGroup sgDisplay = settings.createGroup("Display");
 
@@ -91,6 +97,13 @@ public class ElytraNavigator extends Module {
         .name("auto-take-off")
         .description("Jumps and opens the elytra automatically when you are on the ground.")
         .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> silentView = sgGeneral.add(new BoolSetting.Builder()
+        .name("silent-view")
+        .description("The navigator steers with a silent rotation: the flight and the server follow it, but your view stays yours, so you can look around freely while flying.")
+        .defaultValue(false)
         .build()
     );
 
@@ -351,6 +364,45 @@ public class ElytraNavigator extends Module {
         .build()
     );
 
+    // Speed override
+
+    private final Setting<Boolean> speedOverride = sgOverride.add(new BoolSetting.Builder()
+        .name("speed-override")
+        .description("Sets the flight speed along the look direction in timed bursts, and replaces fireworks completely. For testing anti-cheats on your own server.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Double> overrideSpeed = sgOverride.add(new DoubleSetting.Builder()
+        .name("override-speed")
+        .description("The speed during a burst, in blocks per second.")
+        .defaultValue(75)
+        .min(1)
+        .sliderRange(10, 200)
+        .visible(speedOverride::get)
+        .build()
+    );
+
+    private final Setting<Double> overrideInterval = sgOverride.add(new DoubleSetting.Builder()
+        .name("override-interval")
+        .description("Seconds between the end of one burst and the start of the next.")
+        .defaultValue(3)
+        .min(0)
+        .sliderRange(0, 30)
+        .visible(speedOverride::get)
+        .build()
+    );
+
+    private final Setting<Double> overrideDuration = sgOverride.add(new DoubleSetting.Builder()
+        .name("override-duration")
+        .description("How many seconds each burst lasts.")
+        .defaultValue(1)
+        .min(0.05)
+        .sliderRange(0.1, 10)
+        .visible(speedOverride::get)
+        .build()
+    );
+
     // Safety
 
     private final Setting<Integer> minDurability = sgSafety.add(new IntSetting.Builder()
@@ -463,6 +515,52 @@ public class ElytraNavigator extends Module {
 
     private Estimate estimate;
     private int estimateTimer, estimateSignature, flownTicks;
+    private int overrideTick;
+
+    // Silent view: the rotation the navigator flies with, apart from the view of the player
+    private static final int SILENT_PRIORITY = 60;
+    private float silentYaw, silentPitch;
+    private boolean silentReady;
+
+    private float headingYaw() {
+        return silentView.get() && silentReady ? silentYaw : mc.player.getYRot();
+    }
+
+    private float headingPitch() {
+        return silentView.get() && silentReady ? silentPitch : mc.player.getXRot();
+    }
+
+    /** Turns the flight to the given rotation: the view of the player, or the silent rotation. */
+    private void applyRotation(float yaw, float pitch) {
+        if (silentView.get()) {
+            silentYaw = yaw;
+            silentPitch = pitch;
+            silentReady = true;
+            Rotations.rotate(yaw, pitch, SILENT_PRIORITY);
+        } else {
+            silentReady = false;
+            mc.player.setYRot(yaw);
+            mc.player.setXRot(pitch);
+        }
+    }
+
+    /**
+     * The rotation the movement of the player has to be worked out with while flying, or null. The camera is not touched: the
+     * rotation is only put in place for the step of the player.
+     */
+    public float[] silentRotation() {
+        if (!isActive() || !silentView.get() || !silentReady || mc.player == null || !mc.player.isFallFlying()) return null;
+
+        return new float[] {silentYaw, silentPitch};
+    }
+
+    /** The rotation a firework has to be used with, so that the boost goes the way of the flight. */
+    public float[] aimForUse(Player player, InteractionHand hand) {
+        if (!isActive() || !silentView.get() || !silentReady || player != mc.player) return null;
+        if (!(player.getItemInHand(hand).getItem() instanceof FireworkRocketItem)) return null;
+
+        return new float[] {silentYaw, silentPitch};
+    }
 
     public ElytraNavigator() {
         super(Categories.Movement, "elytra-navigator", "Flies to coordinates with an elytra: climbs, routes around obstacles and boosts with fireworks.");
@@ -470,6 +568,7 @@ public class ElytraNavigator extends Module {
 
     @Override
     public void onActivate() {
+        silentReady = false;
         state = State.TakeOff;
         cruiseY = Double.NEGATIVE_INFINITY;
         scanTimer = 0;
@@ -502,6 +601,7 @@ public class ElytraNavigator extends Module {
         estimateTimer = 0;
         estimateSignature = 0;
         flownTicks = 0;
+        overrideTick = 0;
 
         if (!Utils.canUpdate()) return;
 
@@ -632,8 +732,7 @@ public class ElytraNavigator extends Module {
         // fireworks sideways or into the ground, and those are the ones that get wasted.
         double aimX = target.get().getX() + 0.5 - mc.player.getX();
         double aimZ = target.get().getZ() + 0.5 - mc.player.getZ();
-        mc.player.setYRot((float) Math.toDegrees(Math.atan2(-aimX, aimZ)));
-        mc.player.setXRot((float) -climbPitch.get());
+        applyRotation((float) Math.toDegrees(Math.atan2(-aimX, aimZ)), (float) -climbPitch.get());
 
         if (mc.player.onGround()) {
             takeOffTimer = 0;
@@ -689,7 +788,7 @@ public class ElytraNavigator extends Module {
         };
 
         // Keep heading with the current direction while landing in an emergency, there is no point in turning.
-        if (emergency) yaw = mc.player.getYRot();
+        if (emergency) yaw = headingYaw();
 
         if (avoidance.get() && state != State.Land) {
             double[] steered = avoid(pos, yaw, pitch, speedPerTick, dist);
@@ -699,21 +798,36 @@ public class ElytraNavigator extends Module {
 
         // Turn towards the wanted direction at a limited rate instead of snapping, this avoids chattering between
         // climbing and diving (which bleeds speed) and looks a lot more natural
-        float currentYaw = mc.player.getYRot();
-        float currentPitch = mc.player.getXRot();
+        float currentYaw = headingYaw();
+        float currentPitch = headingPitch();
         float turn = maxTurnRate.get();
         float tilt = maxPitchRate.get();
 
         float newYaw = currentYaw + Mth.clamp(Mth.wrapDegrees((float) yaw - currentYaw), -turn, turn);
         float newPitch = currentPitch + Mth.clamp((float) Mth.clamp(pitch, -89, 89) - currentPitch, -tilt, tilt);
 
-        mc.player.setYRot(newYaw);
-        mc.player.setXRot(newPitch);
+        applyRotation(newYaw, newPitch);
 
         flownTicks++;
-        launchAiming = state == State.Climb && aboveGround(pos) < 10 && mc.player.getXRot() > -climbPitch.get() + 12;
+        launchAiming = state == State.Climb && aboveGround(pos) < 10 && headingPitch() > -climbPitch.get() + 12;
 
-        if (useFireworks.get()) boost(speed, dist);
+        if (speedOverride.get()) overrideTick++;
+        else if (useFireworks.get()) boost(speed, dist);
+    }
+
+    /** Whether a speed burst is running: the first part of every interval + duration cycle. */
+    private boolean overrideActive() {
+        int duration = Math.max(1, (int) Math.round(overrideDuration.get() * TICKS_PER_SECOND));
+        int interval = (int) Math.round(overrideInterval.get() * TICKS_PER_SECOND);
+        return overrideTick % (duration + interval) < duration;
+    }
+
+    @EventHandler
+    private void onPlayerMove(PlayerMoveEvent event) {
+        if (!speedOverride.get() || !Utils.canUpdate() || !mc.player.isFallFlying() || !overrideActive()) return;
+
+        Vec3 look = mc.player.getLookAngle().scale(overrideSpeed.get() / TICKS_PER_SECOND);
+        ((IVec3) event.movement).meteor$set(look.x, look.y, look.z);
     }
 
     private void updateState(Vec3 pos, double dist) {
@@ -1090,7 +1204,7 @@ public class ElytraNavigator extends Module {
         double y = flying ? pos.y : pos.y + 1.25;
         double vh = velocity.x * ux + velocity.z * uz; // speed towards the target, blocks per tick
         double vy = velocity.y;
-        double pitch = flying ? mc.player.getXRot() : -climbPitch.get();
+        double pitch = flying ? headingPitch() : -climbPitch.get();
         double remaining = dist;
 
         double cruise = cruiseY > -1e8 ? cruiseY : wantedCruise(pos, dist);

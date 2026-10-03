@@ -473,6 +473,7 @@ public class Modules extends System<Modules> {
         add(new ElytraBoost());
         add(new ElytraFly());
         add(new ElytraNavigator());
+        add(new ElytraLookFlight());
         add(new EntityControl());
         add(new FastClimb());
         add(new Flight());

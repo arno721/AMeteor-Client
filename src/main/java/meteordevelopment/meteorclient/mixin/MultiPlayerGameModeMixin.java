@@ -14,6 +14,7 @@ import meteordevelopment.meteorclient.events.entity.player.*;
 import meteordevelopment.meteorclient.mixininterface.IMultiPlayerGameMode;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CrossbowRagebot;
+import meteordevelopment.meteorclient.systems.modules.movement.ElytraNavigator;
 import meteordevelopment.meteorclient.systems.modules.player.BreakDelay;
 import meteordevelopment.meteorclient.systems.modules.player.SpeedMine;
 import meteordevelopment.meteorclient.utils.world.BlockUtils;
@@ -156,6 +157,12 @@ public abstract class MultiPlayerGameModeMixin implements IMultiPlayerGameMode {
 
         CrossbowRagebot ragebot = Modules.get().get(CrossbowRagebot.class);
         float[] aim = ragebot != null ? ragebot.aimForUse(player, hand) : null;
+
+        if (aim == null) {
+            ElytraNavigator navigator = Modules.get().get(ElytraNavigator.class);
+            aim = navigator != null ? navigator.aimForUse(player, hand) : null;
+        }
+
         if (aim == null) return;
 
         meteor$savedYaw = player.getYRot();

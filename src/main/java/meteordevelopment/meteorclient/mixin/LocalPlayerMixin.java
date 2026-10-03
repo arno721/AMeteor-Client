@@ -15,6 +15,7 @@ import meteordevelopment.meteorclient.events.entity.DropItemsEvent;
 import meteordevelopment.meteorclient.events.entity.player.PlayerTickMovementEvent;
 import meteordevelopment.meteorclient.events.entity.player.SendMovementPacketsEvent;
 import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.meteorclient.systems.modules.movement.ElytraNavigator;
 import meteordevelopment.meteorclient.systems.modules.movement.*;
 import meteordevelopment.meteorclient.systems.modules.player.LiquidInteract;
 import meteordevelopment.meteorclient.systems.modules.player.NoMiningTrace;
@@ -32,6 +33,7 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -105,6 +107,37 @@ public abstract class LocalPlayerMixin extends AbstractClientPlayer {
     @Inject(method = "aiStep", at = @At("HEAD"))
     private void preAiStep(CallbackInfo ci) {
         MeteorClient.EVENT_BUS.post(PlayerTickMovementEvent.get());
+    }
+
+    @Unique
+    private boolean meteor$silentSwapped;
+    @Unique
+    private float meteor$viewYaw, meteor$viewPitch;
+
+    // The silent view of the Elytra Navigator: the step of the player is worked out with the rotation of the flight, then the
+    // view of the player is put back
+    @Inject(method = "aiStep", at = @At("HEAD"), order = 1100)
+    private void meteor$silentFlightStart(CallbackInfo ci) {
+        meteor$silentSwapped = false;
+
+        ElytraNavigator navigator = Modules.get().get(ElytraNavigator.class);
+        float[] rotation = navigator != null ? navigator.silentRotation() : null;
+        if (rotation == null) return;
+
+        meteor$viewYaw = getYRot();
+        meteor$viewPitch = getXRot();
+        setYRot(rotation[0]);
+        setXRot(rotation[1]);
+        meteor$silentSwapped = true;
+    }
+
+    @Inject(method = "aiStep", at = @At("RETURN"))
+    private void meteor$silentFlightEnd(CallbackInfo ci) {
+        if (!meteor$silentSwapped) return;
+
+        setYRot(meteor$viewYaw);
+        setXRot(meteor$viewPitch);
+        meteor$silentSwapped = false;
     }
 
     @ModifyReturnValue(method = "getJumpRidingScale", at = @At("RETURN"))
