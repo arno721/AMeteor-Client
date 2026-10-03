@@ -1346,7 +1346,7 @@ public class ElytraNavigator extends Module {
                 }
 
                 SystemTray tray = SystemTray.getSystemTray();
-                TrayIcon icon = new TrayIcon(loadIcon(), "Meteor Client");
+                TrayIcon icon = new TrayIcon(loadIcon(), "AMeteor Client");
                 icon.setImageAutoSize(true);
 
                 tray.add(icon);

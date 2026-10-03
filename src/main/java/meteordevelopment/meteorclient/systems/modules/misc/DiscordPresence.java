@@ -81,7 +81,7 @@ public class DiscordPresence extends Module {
     private final Setting<List<String>> line2Strings = sgLine2.add(new StringListSetting.Builder()
         .name("line-2-messages")
         .description("Messages used for the second line.")
-        .defaultValue("Meteor on Crack!", "{round(server.tps, 1)} TPS", "Playing on {server.difficulty} difficulty.", "{server.player_count} Players online")
+        .defaultValue("AMeteor on Crack!", "{round(server.tps, 1)} TPS", "Playing on {server.difficulty} difficulty.", "{server.player_count} Players online")
         .onChanged(_ -> recompileLine2())
         .renderer(StarscriptTextBoxRenderer.class)
         .build()
@@ -122,7 +122,7 @@ public class DiscordPresence extends Module {
     }
 
     public DiscordPresence() {
-        super(Categories.Misc, "discord-presence", "Displays Meteor as your presence on Discord.");
+        super(Categories.Misc, "discord-presence", "Displays AMeteor as your presence on Discord.");
 
         runInMainMenu = true;
     }

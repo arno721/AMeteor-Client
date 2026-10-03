@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
-  "name": "Meteor Client",
+  "name": "AMeteor Client",
   "id": "meteor-client",
   "version": "${version}",
-  "description": "Based utility mod.",
+  "description": "A Meteor Client fork with language packs, a Dynamic Island and a music player.",
   "authors": [
-    "MineGame159",
-    "squidoodly",
-    "seasnail"
+    "arno721"
+  ],
+  "contributors": [
+    "Meteor Development (original Meteor Client: MineGame159, squidoodly, seasnail)"
   ],
   "contact": {
-    "homepage": "https://meteorclient.com",
-    "issues": "https://github.com/MeteorDevelopment/meteor-client/issues",
-    "sources": "https://github.com/MeteorDevelopment/meteor-client",
-    "discord": "https://meteorclient.com/discord"
+    "homepage": "https://github.com/arno721/AMeteor-Client",
+    "issues": "https://github.com/arno721/AMeteor-Client/issues",
+    "sources": "https://github.com/arno721/AMeteor-Client"
   },
   "license": "GPL-3.0",
   "icon": "assets/meteor-client/icon.png",
@@ -37,11 +37,11 @@
   "accessWidener": "meteor-client.classtweaker",
   "custom": {
     "meteor-client:build_number": "${build_number}",
-    "meteor-client:color": "145,61,226",
+    "meteor-client:color": "176,106,240",
     "meteor-client:commit": "${commit}",
     "modmenu": {
       "links": {
-        "modmenu.discord": "https://meteorclient.com/discord"
+        "modmenu.github": "https://github.com/arno721/AMeteor-Client"
       }
     },
     "badoptimizations:cache_hooks": {

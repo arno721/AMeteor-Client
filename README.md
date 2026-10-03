@@ -1,4 +1,8 @@
-<h1 align="center">Az Meteor Client</h1>
+<p align="center">
+<img src=".github/assets/icon.png" alt="AMeteor Client logo" width="160"/>
+</p>
+
+<h1 align="center">AMeteor Client</h1>
 <p align="center">基於 <a href="https://github.com/MeteorDevelopment/meteor-client">Meteor Client</a> 的 Minecraft 26.2 Fabric 工具模組分支,內建繁體中文與可自訂的語言包系統。<br>
 A fork of Meteor Client for Minecraft 26.2 (Fabric) with a language pack system, a Dynamic Island and a music player.</p>
 
@@ -43,7 +47,7 @@ A fork of Meteor Client for Minecraft 26.2 (Fabric) with a language pack system,
 ./gradlew build
 ```
 
-成品在 `build/libs`。開發用客戶端:`./gradlew runClient`。
+成品在 `build/libs`(檔名 `ameteor-client-26.2-local.jar`)。開發用客戶端:`./gradlew runClient`。
 
 ## 安裝
 
@@ -51,7 +55,7 @@ A fork of Meteor Client for Minecraft 26.2 (Fabric) with a language pack system,
 
 ## 回報問題與建議
 
-這個分支新增或修改的功能,請到[本倉庫的 Issues](https://github.com/arno721/Az-Meteor-Client/issues) 回報。原版 Meteor Client 的問題請到[上游倉庫](https://github.com/MeteorDevelopment/meteor-client/issues)。
+這個分支新增或修改的功能,請到[本倉庫的 Issues](https://github.com/arno721/AMeteor-Client/issues) 回報。原版 Meteor Client 的問題請到[上游倉庫](https://github.com/MeteorDevelopment/meteor-client/issues)。
 
 ## 貢獻
 
@@ -62,7 +66,7 @@ A fork of Meteor Client for Minecraft 26.2 (Fabric) with a language pack system,
 
 ## 致謝
 
-- [Meteor Development](https://github.com/MeteorDevelopment/meteor-client) 的 Meteor Client,本專案的基礎。
+- [Meteor Development](https://github.com/MeteorDevelopment/meteor-client)(MineGame159、squidoodly、seasnail 等)的 Meteor Client,本專案的基礎與原始作者。
 - [Cabaletta](https://github.com/cabaletta) 與 [WagYourTail](https://github.com/wagyourtail) 的 [Baritone](https://github.com/cabaletta/baritone)。
 - [Fabric 團隊](https://github.com/FabricMC) 的 [Fabric](https://github.com/FabricMC/fabric-loader)。
 - [LRCLIB](https://lrclib.net) 提供歌詞資料。

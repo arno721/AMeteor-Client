@@ -34,7 +34,7 @@ public class Config extends System<Config> {
 
     public final Setting<String> language = sgMisc.add(new ProvidedStringSetting.Builder()
         .name("language")
-        .description("Language of Meteor Client. auto follows the Minecraft language. Export, translate and import your own language below.")
+        .description("Language of AMeteor Client. auto follows the Minecraft language. Export, translate and import your own language below.")
         .defaultValue(LanguageManager.AUTO)
         .supplier(LanguageManager::availableLanguages)
         .onChanged(LanguageManager::setLanguage)
@@ -69,14 +69,14 @@ public class Config extends System<Config> {
 
     public final Setting<Boolean> titleScreenCredits = sgVisual.add(new BoolSetting.Builder()
         .name("title-screen-credits")
-        .description("Show Meteor credits on title screen")
+        .description("Show AMeteor credits on title screen")
         .defaultValue(true)
         .build()
     );
 
     public final Setting<Boolean> titleScreenSplashes = sgVisual.add(new BoolSetting.Builder()
         .name("title-screen-splashes")
-        .description("Show Meteor splash texts on title screen")
+        .description("Show AMeteor splash texts on title screen")
         .defaultValue(true)
         .build()
     );
@@ -175,7 +175,7 @@ public class Config extends System<Config> {
 
     public final Setting<Boolean> chatFeedback = sgChat.add(new BoolSetting.Builder()
         .name("chat-feedback")
-        .description("Sends chat feedback when meteor performs certain actions.")
+        .description("Sends chat feedback when AMeteor performs certain actions.")
         .defaultValue(true)
         .build()
     );

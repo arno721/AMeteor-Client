@@ -56,7 +56,7 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
 
     private final Setting<Boolean> hideInMenus = sgGeneral.add(new BoolSetting.Builder()
         .name("hide-in-menus")
-        .description("Hides the meteor hud when in inventory screens or game menus.")
+        .description("Hides the AMeteor hud when in inventory screens or game menus.")
         .defaultValue(false)
         .build()
     );

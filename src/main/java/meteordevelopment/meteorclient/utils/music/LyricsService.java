@@ -34,7 +34,7 @@ import java.util.regex.Pattern;
 public final class LyricsService {
     public static final LyricsService INSTANCE = new LyricsService();
 
-    private static final String USER_AGENT = "Meteor Client music player (https://github.com/MeteorDevelopment/meteor-client)";
+    private static final String USER_AGENT = "AMeteor Client music player (https://github.com/arno721/AMeteor-Client)";
     private static final String NOT_FOUND = "#not-found";
     private static final long NOT_FOUND_RETRY_MILLIS = 24L * 3600 * 1000;
 
