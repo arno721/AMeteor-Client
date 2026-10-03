@@ -12,6 +12,7 @@ import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.orbit.EventHandler;
@@ -85,6 +86,10 @@ public class BowSpam extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Pre event) {
+        // The crossbow ragebot shoots them itself, with its aim
+        CrossbowRagebot ragebot = Modules.get().get(CrossbowRagebot.class);
+        if (ragebot != null && ragebot.takesOverBowSpam()) return;
+
         FindItemResult crossbow = searchInventory.get() ? InvUtils.find(this::crossbow) : InvUtils.find(this::crossbow, 0, 8);
         if (spamCrossbows.get() && crossbow.found()) {
             if (ticks >= crossbowDelay.get()) {
@@ -132,6 +137,18 @@ public class BowSpam extends Module {
                 wasHoldingRightClick = false;
             }
         }
+    }
+
+    public boolean spamsCrossbows() {
+        return spamCrossbows.get();
+    }
+
+    public int getCrossbowDelay() {
+        return crossbowDelay.get();
+    }
+
+    public boolean searchesInventory() {
+        return searchInventory.get();
     }
 
     private void setPressed(boolean pressed) {

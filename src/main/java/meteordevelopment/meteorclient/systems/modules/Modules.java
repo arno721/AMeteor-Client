@@ -416,6 +416,8 @@ public class Modules extends System<Modules> {
         add(new Hitboxes());
         add(new HoleFiller());
         add(new KillAura());
+        add(new KillAura1());
+        add(new CrossbowRagebot());
         add(new SpearAura());
         add(new Offhand());
         add(new Quiver());

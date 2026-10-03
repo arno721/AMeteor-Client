@@ -13,6 +13,7 @@ import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.KillAura;
+import meteordevelopment.meteorclient.systems.modules.combat.KillAura1;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
@@ -220,6 +221,7 @@ public class TargetESP extends Module {
     );
 
     private KillAura killAura;
+    private KillAura1 killAura1;
 
     private final Color a = new Color();
     private final Color b = new Color();
@@ -252,9 +254,13 @@ public class TargetESP extends Module {
         double dt = Mth.clamp((now - lastNanos) / 1e9, 0, 0.1);
         lastNanos = now;
 
-        if (killAura == null) killAura = Modules.get().get(KillAura.class);
+        if (killAura == null) {
+            killAura = Modules.get().get(KillAura.class);
+            killAura1 = Modules.get().get(KillAura1.class);
+        }
 
-        Entity target = killAura.isActive() && (!onlyWhileAttacking.get() || killAura.attacking) ? killAura.getTarget() : null;
+        Entity target = killAura1.isActive() && (!onlyWhileAttacking.get() || killAura1.attacking) ? killAura1.getTarget() : null;
+        if (target == null) target = killAura.isActive() && (!onlyWhileAttacking.get() || killAura.attacking) ? killAura.getTarget() : null;
 
         if (target != null && target.isAlive()) {
             if (target != current) {

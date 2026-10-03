@@ -24,6 +24,8 @@ import meteordevelopment.meteorclient.systems.modules.combat.BedAura;
 import meteordevelopment.meteorclient.systems.modules.combat.BowAimbot;
 import meteordevelopment.meteorclient.systems.modules.combat.CrystalAura;
 import meteordevelopment.meteorclient.systems.modules.combat.KillAura;
+import meteordevelopment.meteorclient.systems.modules.combat.CrossbowRagebot;
+import meteordevelopment.meteorclient.systems.modules.combat.KillAura1;
 import meteordevelopment.meteorclient.systems.modules.combat.SpearAura;
 import meteordevelopment.meteorclient.systems.modules.misc.Notebot;
 import meteordevelopment.meteorclient.systems.modules.movement.Blink;
@@ -86,6 +88,7 @@ public class IslandSources {
     private final Setting<Boolean> lowHealth;
     private final Setting<Double> lowHealthThreshold;
     private final Setting<Boolean> auraTargets;
+    private final Setting<Boolean> crossbowCard;
     private final Setting<Boolean> totemPops;
 
     // Movement
@@ -140,6 +143,8 @@ public class IslandSources {
     private double pathStartDistance;
 
     private KillAura killAura;
+    private KillAura1 killAura1;
+    private CrossbowRagebot crossbowRagebot;
     private SpearAura spearAura;
     private CrystalAura crystalAura;
     private AnchorAura anchorAura;
@@ -174,6 +179,13 @@ public class IslandSources {
         auraTargets = sgCombat.add(new BoolSetting.Builder()
             .name("aura-targets")
             .description("Shows the target of Kill Aura, Spear Aura, Crystal Aura, Anchor Aura, Bed Aura and Bow Aimbot.")
+            .defaultValue(true)
+            .build()
+        );
+
+        crossbowCard = sgCombat.add(new BoolSetting.Builder()
+            .name("crossbow-ragebot")
+            .description("Shows what the Crossbow Ragebot is doing: the target, the hit chance, the charge, the arrows and the crossbow durability left, and how many arrows hit.")
             .defaultValue(true)
             .build()
         );
@@ -359,6 +371,7 @@ public class IslandSources {
     public void collect(List<IslandCard> out, java.util.function.Supplier<IslandCard> next) {
         add(out, next, this::fillLowHealth);
         add(out, next, this::fillServerLag);
+        add(out, next, this::fillCrossbow);
         add(out, next, this::fillAuraTarget);
         add(out, next, this::fillEating);
         add(out, next, this::fillElytra);
@@ -423,6 +436,8 @@ public class IslandSources {
 
         if (killAura == null) {
             killAura = Modules.get().get(KillAura.class);
+            killAura1 = Modules.get().get(KillAura1.class);
+            crossbowRagebot = Modules.get().get(CrossbowRagebot.class);
             spearAura = Modules.get().get(SpearAura.class);
             crystalAura = Modules.get().get(CrystalAura.class);
             anchorAura = Modules.get().get(AnchorAura.class);
@@ -433,12 +448,14 @@ public class IslandSources {
         Module source = null;
         Entity target = null;
 
-        if (killAura.isActive() && (target = killAura.getTarget()) != null) source = killAura;
+        if (killAura1.isActive() && (target = killAura1.getTarget()) != null) source = killAura1;
+        else if (killAura.isActive() && (target = killAura.getTarget()) != null) source = killAura;
         else if (spearAura.isActive() && (target = spearAura.getTarget()) != null) source = spearAura;
         else if (crystalAura.isActive() && (target = crystalAura.getTarget()) != null) source = crystalAura;
         else if (anchorAura.isActive() && (target = anchorAura.getTarget()) != null) source = anchorAura;
         else if (bedAura.isActive() && (target = bedAura.getTarget()) != null) source = bedAura;
         else if (bowAimbot.isActive() && (target = bowAimbot.getTarget()) != null) source = bowAimbot;
+        else if (!crossbowCard.get() && crossbowRagebot.isActive() && (target = crossbowRagebot.getTarget()) != null) source = crossbowRagebot;
 
         if (source == null || target.isRemoved()) return false;
 
@@ -465,6 +482,141 @@ public class IslandSources {
             c.value = "%.1f m".formatted(distance);
         }
 
+        return true;
+    }
+
+    private boolean fillCrossbow(IslandCard c) {
+        if (!crossbowCard.get()) return false;
+        if (crossbowRagebot == null) crossbowRagebot = Modules.get().get(CrossbowRagebot.class);
+        if (!crossbowRagebot.isActive()) return false;
+
+        Entity target = crossbowRagebot.getTarget();
+        if (target != null && target.isRemoved()) target = null;
+
+        CrossbowRagebot.Phase phase = crossbowRagebot.getPhase();
+        double charge = crossbowRagebot.chargeProgress();
+
+        // Without a target it only shows while a crossbow is being charged
+        if (target == null && charge < 0) return false;
+
+        double chance = crossbowRagebot.getHitChance();
+        int arrows = crossbowRagebot.getArrowAmount();
+        double durability = crossbowRagebot.getDurabilityPercent();
+
+        if (crossbowRagebot.isSwitching()) return fillCrossbowSwitch(c, phase, charge, arrows, durability);
+
+        String phaseText = switch (phase) {
+            case Shooting -> tr("crossbow-shooting", "Shooting");
+            case Charging -> tr("crossbow-charging", "Charging");
+            case Loaded -> tr("crossbow-loaded", "Loaded");
+            case Waiting -> tr("crossbow-waiting", "Waiting for a better shot");
+            case Searching -> tr("crossbow-searching", "Loading");
+            case Idle -> tr("crossbow-idle", "Ready");
+        };
+
+        c.reset("crossbow", IslandSource.COMBAT + 2);
+        c.icon = Icon.TARGET;
+        c.pulse = phase == CrossbowRagebot.Phase.Shooting;
+        c.accent = chance >= 0 ? DynamicIsland.mix(RED, GREEN, Mth.clamp(chance, 0, 1)) : RED;
+
+        StringBuilder sub = new StringBuilder(phaseText);
+
+        if (target != null) {
+            c.title = EntityUtils.getName(target);
+            sub.append("  ·  %.1f m".formatted(Math.sqrt(mc.player.distanceToSqr(target))));
+            sub.append("  ·  ").append(crossbowRagebot.getCandidateCount()).append(' ').append(tr("crossbow-targets", "in range"));
+        } else {
+            c.title = tr("crossbow-ragebot", "Crossbow Ragebot");
+        }
+
+        sub.append("  ·  ").append(arrows).append(' ').append(tr("crossbow-arrows", "arrows"));
+        sub.append("  ·  ").append(crossbowRagebot.loadedCount()).append(' ').append(tr("crossbow-loaded-count", "loaded"));
+        if (durability >= 0) sub.append("  ·  ").append(Math.round(durability)).append("% ").append(tr("crossbow-durability", "durability"));
+
+        if (crossbowRagebot.getFollowedCount() > 0) {
+            sub.append("  ·  ").append(crossbowRagebot.getHitCount()).append('/').append(crossbowRagebot.getFollowedCount())
+                .append(' ').append(tr("crossbow-hits", "hits"));
+        }
+
+        if (crossbowRagebot.isSwitching()) sub.append("  ·  ").append(tr("crossbow-switch", "switch"));
+        c.subtitle = sub.toString();
+
+        if (charge >= 0) {
+            c.progress = charge;
+            c.value = "%d%%".formatted(Math.round(charge * 100));
+        } else if (chance >= 0) {
+            c.progress = Mth.clamp(chance, 0, 1);
+            c.value = "%d%%".formatted(Math.round(chance * 100));
+        }
+
+        c.compactTitle = target != null ? EntityUtils.getName(target) : phaseText;
+        c.compactValue = c.value;
+        c.chip = c.value.isEmpty() ? String.valueOf(arrows) : c.value;
+        return true;
+    }
+
+    // The count of targets shown in Switch mode, held for a moment so it does not jump around
+    private int switchShown;
+    private long switchShownAt;
+
+    /**
+     * Switch mode changes the target every shot, so a card about "the target" would never rest. This one is about the whole
+     * group instead: how many are in range, how it goes, and the arrows. The name of the one being shot is only a small hint.
+     */
+    private boolean fillCrossbowSwitch(IslandCard c, CrossbowRagebot.Phase phase, double charge, int arrows, double durability) {
+        long now = System.currentTimeMillis();
+        int count = crossbowRagebot.getCandidateCount();
+
+        // Goes up at once, comes down only after a second
+        if (count >= switchShown || now - switchShownAt > 1000) {
+            switchShown = count;
+            switchShownAt = now;
+        } else if (count > 0) {
+            switchShownAt = Math.max(switchShownAt, now - 500);
+        }
+
+        if (switchShown <= 0 && charge < 0) return false;
+
+        int followed = crossbowRagebot.getFollowedCount();
+        int hits = crossbowRagebot.getHitCount();
+        double ratio = followed > 0 ? Mth.clamp(hits / (double) followed, 0, 1) : -1;
+
+        String phaseText = switch (phase) {
+            case Shooting -> tr("crossbow-shooting", "Shooting");
+            case Charging -> tr("crossbow-charging", "Charging");
+            case Loaded -> tr("crossbow-loaded", "Loaded");
+            case Waiting -> tr("crossbow-waiting", "Waiting for a better shot");
+            case Searching -> tr("crossbow-searching", "Loading");
+            case Idle -> tr("crossbow-idle", "Ready");
+        };
+
+        c.reset("crossbow-switch", IslandSource.COMBAT + 2);
+        c.icon = Icon.TARGET;
+        c.pulse = phase == CrossbowRagebot.Phase.Shooting;
+        c.accent = ratio >= 0 ? DynamicIsland.mix(RED, GREEN, ratio) : RED;
+        c.expand = false;
+
+        c.title = "%s  ×%d".formatted(tr("crossbow-switch-title", "Switching"), switchShown);
+
+        StringBuilder sub = new StringBuilder(phaseText);
+        sub.append("  ·  ").append(arrows).append(' ').append(tr("crossbow-arrows", "arrows"));
+        sub.append("  ·  ").append(crossbowRagebot.loadedCount()).append(' ').append(tr("crossbow-loaded-count", "loaded"));
+        if (durability >= 0) sub.append("  ·  ").append(Math.round(durability)).append("% ").append(tr("crossbow-durability", "durability"));
+        c.subtitle = sub.toString();
+
+        if (charge >= 0) {
+            c.progress = charge;
+            c.value = "%d%%".formatted(Math.round(charge * 100));
+        } else if (ratio >= 0) {
+            c.progress = ratio;
+            c.value = "%d/%d".formatted(hits, followed);
+        } else {
+            c.value = String.valueOf(crossbowRagebot.getShotCount());
+        }
+
+        c.compactTitle = "×" + switchShown;
+        c.compactValue = c.value;
+        c.chip = "×" + switchShown;
         return true;
     }
 

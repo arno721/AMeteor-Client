@@ -95,7 +95,7 @@ public class Criticals extends Module {
 
                 Entity entity = mc.level.getEntity(entityId);
 
-                if (!(entity instanceof LivingEntity) || (entity != Modules.get().get(KillAura.class).getTarget() && ka.get()))
+                if (!(entity instanceof LivingEntity) || (entity != Modules.get().get(KillAura.class).getTarget() && entity != Modules.get().get(KillAura1.class).getTarget() && ka.get()))
                     return;
 
                 switch (mode.get()) {
