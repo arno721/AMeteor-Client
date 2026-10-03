@@ -1,0 +1,6 @@
+Minecraft: 26.2
+Java: 25
+Language support added: Auto, English, Traditional Chinese (Taiwan)
+Auto mapping: zh_* -> zh_tw; en_* -> en_us; other -> en_us
+Fallback: selected locale -> en_us -> original Meteor text
+The source project includes Gradle wrapper. This environment could not run Gradle because the Gradle distribution server was unreachable, so no newly compiled JAR was produced here.

@@ -1,0 +1,121 @@
+/*
+ * This file is part of the Meteor Client distribution (https://github.com/MeteorDevelopment/meteor-client).
+ * Copyright (c) Meteor Development.
+ */
+
+package meteordevelopment.meteorclient.systems.modules.world;
+
+import meteordevelopment.meteorclient.events.world.TickEvent;
+import meteordevelopment.meteorclient.settings.*;
+import meteordevelopment.meteorclient.systems.modules.Categories;
+import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.utils.entity.EntityAgeTest;
+import meteordevelopment.meteorclient.utils.player.PlayerUtils;
+import meteordevelopment.meteorclient.utils.player.Rotations;
+import meteordevelopment.orbit.EventHandler;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.phys.EntityHitResult;
+
+import java.util.LinkedHashMap;
+import java.util.Set;
+
+public class AutoBreed extends Module {
+    private final SettingGroup sgGeneral = settings.getDefaultGroup();
+
+    private final Setting<Set<EntityType<?>>> entities = sgGeneral.add(new EntityTypeListSetting.Builder()
+        .name("entities")
+        .description("Entities to breed.")
+        .defaultValue(EntityTypes.HORSE, EntityTypes.DONKEY, EntityTypes.COW,
+            EntityTypes.MOOSHROOM, EntityTypes.SHEEP, EntityTypes.PIG, EntityTypes.CHICKEN, EntityTypes.WOLF,
+            EntityTypes.CAT, EntityTypes.OCELOT, EntityTypes.RABBIT, EntityTypes.LLAMA, EntityTypes.TURTLE,
+            EntityTypes.PANDA, EntityTypes.FOX, EntityTypes.BEE, EntityTypes.STRIDER, EntityTypes.HOGLIN)
+        .onlyAttackable()
+        .build()
+    );
+
+    private final Setting<Double> range = sgGeneral.add(new DoubleSetting.Builder()
+        .name("range")
+        .description("How far away the animals can be to be bred.")
+        .min(0)
+        .defaultValue(4.5)
+        .build()
+    );
+
+    private final Setting<InteractionHand> hand = sgGeneral.add(new EnumSetting.Builder<InteractionHand>()
+        .name("hand-for-breeding")
+        .description("The hand to use for breeding.")
+        .defaultValue(InteractionHand.MAIN_HAND)
+        .build()
+    );
+
+    private final Setting<EntityAgeTest> mobAgeFilter = sgGeneral.add(new EnumSetting.Builder<EntityAgeTest>()
+        .name("mob-age-filter")
+        .description("Determines the age of the mobs to target (baby, adult, or both).")
+        .defaultValue(EntityAgeTest.Adult)
+        .build()
+    );
+
+    private final Setting<Boolean> continuousBreeding = sgGeneral.add(new BoolSetting.Builder()
+        .name("continuous-breeding")
+        .description("Whether to feed the same animal again after a certain time period.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Integer> breedingInterval = sgGeneral.add(new IntSetting.Builder()
+        .name("breeding-interval")
+        .description("Determines how often the same animal is fed in ticks.")
+        .min(1)
+        .sliderMax(24000)
+        .defaultValue(6600) // 30s in love mode and the 5-minute breeding cooldown
+        .visible(continuousBreeding::get)
+        .build()
+    );
+
+    private final LinkedHashMap<Entity, Integer> animalsFed = new LinkedHashMap<>();
+    private int tickCounter = 0;
+
+    public AutoBreed() {
+        super(Categories.World, "auto-breed", "Automatically breeds specified animals.");
+    }
+
+    @Override
+    public void onActivate() {
+        animalsFed.clear();
+        tickCounter = 0;
+    }
+
+    @EventHandler
+    private void onTick(TickEvent.Pre event) {
+        for (Entity entity : mc.level.entitiesForRendering()) {
+            if (!(entity instanceof Animal animal)) continue;
+
+            if (!entities.get().contains(animal.getType())
+                || !mobAgeFilter.get().test(animal)
+                || animalsFed.containsKey(animal)
+                || !PlayerUtils.isWithin(animal, range.get())
+                || !animal.isFood(hand.get() == InteractionHand.MAIN_HAND ? mc.player.getMainHandItem() : mc.player.getOffhandItem()))
+                continue;
+
+            Rotations.rotate(Rotations.getYaw(entity), Rotations.getPitch(entity), -100, () -> {
+                EntityHitResult location = new EntityHitResult(animal, animal.getBoundingBox().getCenter());
+                mc.gameMode.interact(mc.player, animal, location, hand.get());
+                mc.player.swing(hand.get());
+                animalsFed.putLast(animal, tickCounter);
+            });
+            break;
+        }
+
+        if (continuousBreeding.get()) {
+            while (!animalsFed.isEmpty() && animalsFed.firstEntry().getValue() < tickCounter - breedingInterval.get()) {
+                animalsFed.pollFirstEntry();
+            }
+            tickCounter++;
+        }
+    }
+
+}

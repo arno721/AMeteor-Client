@@ -1,0 +1,8 @@
+{
+  "key.meteor-client.open-gui": "打开GUI",
+  "key.meteor-client.open-commands": "输入命令",
+  "module.kill-aura.setting.attack-babies.name": "攻擊幼體",
+  "module.kill-aura.setting.attack-babies.description": "是否攻擊幼體。",
+  "module.kill-aura.setting.attack-neutral.name": "攻擊中立生物",
+  "module.kill-aura.setting.attack-neutral.description": "是否攻擊中立生物。"
+}
