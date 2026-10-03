@@ -15,6 +15,7 @@ import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.i18n.LanguageManager;
+import meteordevelopment.meteorclient.utils.misc.Keybind;
 import meteordevelopment.meteorclient.utils.network.MeteorExecutor;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
@@ -72,6 +73,7 @@ public class ElytraNavigator extends Module {
     private final SettingGroup sgNavigation = settings.createGroup("Navigation");
     private final SettingGroup sgFireworks = settings.createGroup("Fireworks");
     private final SettingGroup sgOverride = settings.createGroup("Speed Override");
+    private final SettingGroup sgPick = settings.createGroup("Freecam Pick");
     private final SettingGroup sgSafety = settings.createGroup("Safety");
     private final SettingGroup sgDisplay = settings.createGroup("Display");
 
@@ -402,6 +404,87 @@ public class ElytraNavigator extends Module {
         .visible(speedOverride::get)
         .build()
     );
+
+    // Freecam pick
+
+    private final Setting<Keybind> pickBind = sgPick.add(new KeybindSetting.Builder()
+        .name("pick-key")
+        .description("Starts and stops picking the destination with the Freecam. Works when the navigator is off too.")
+        .defaultValue(Keybind.none())
+        .build()
+    );
+
+    private final Setting<Keybind> markBind = sgPick.add(new KeybindSetting.Builder()
+        .name("mark-key")
+        .description("Marks the place of the camera as the destination and sends you there.")
+        .defaultValue(Keybind.none())
+        .build()
+    );
+
+    private final Setting<Keybind> cancelBind = sgPick.add(new KeybindSetting.Builder()
+        .name("cancel-key")
+        .description("Stops picking and stops the flight.")
+        .defaultValue(Keybind.none())
+        .build()
+    );
+
+    private final Setting<Boolean> markOnGround = sgPick.add(new BoolSetting.Builder()
+        .name("mark-on-ground")
+        .description("Uses the height of the ground under the camera as the destination, not the height of the camera.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> useBaritone = sgPick.add(new BoolSetting.Builder()
+        .name("use-baritone")
+        .description("Flies with the elytra pathfinding of Baritone when it is installed and you have firework rockets (its flight is planned with them). Otherwise the navigator flies.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> baritoneTakeOff = sgPick.add(new BoolSetting.Builder()
+        .name("baritone-take-off")
+        .description("Jumps and opens the elytra for Baritone, which only flies once you are in the air. Turn off if you use Baritone's elytraAutoJump.")
+        .defaultValue(true)
+        .visible(useBaritone::get)
+        .build()
+    );
+
+    public boolean speedOverrideOn() {
+        return speedOverride.get();
+    }
+
+    public void setSpeedOverride(boolean on) {
+        speedOverride.set(on);
+    }
+
+    public boolean baritoneTakeOff() {
+        return baritoneTakeOff.get();
+    }
+
+    public Keybind pickBind() {
+        return pickBind.get();
+    }
+
+    public Keybind markBind() {
+        return markBind.get();
+    }
+
+    public Keybind cancelBind() {
+        return cancelBind.get();
+    }
+
+    public boolean markOnGround() {
+        return markOnGround.get();
+    }
+
+    public boolean useBaritone() {
+        return useBaritone.get();
+    }
+
+    public void setTarget(BlockPos pos) {
+        target.set(pos);
+    }
 
     // Safety
 
@@ -824,7 +907,8 @@ public class ElytraNavigator extends Module {
 
     @EventHandler
     private void onPlayerMove(PlayerMoveEvent event) {
-        if (!speedOverride.get() || !Utils.canUpdate() || !mc.player.isFallFlying() || !overrideActive()) return;
+        // Never while Baritone flies, its flight is planned without it
+        if (!speedOverride.get() || ElytraPick.isBaritoneFlying() || !Utils.canUpdate() || !mc.player.isFallFlying() || !overrideActive()) return;
 
         Vec3 look = mc.player.getLookAngle().scale(overrideSpeed.get() / TICKS_PER_SECOND);
         ((IVec3) event.movement).meteor$set(look.x, look.y, look.z);

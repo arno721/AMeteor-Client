@@ -419,6 +419,7 @@ public class Modules extends System<Modules> {
         add(new KillAura1());
         add(new CrossbowRagebot());
         add(new SpearAura());
+        add(new SpearKill());
         add(new Offhand());
         add(new Quiver());
         add(new SelfAnvil());
