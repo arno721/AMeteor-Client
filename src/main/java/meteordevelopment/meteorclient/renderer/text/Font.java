@@ -28,6 +28,16 @@ public class Font {
     /** Empty space around every glyph, so linear filtering does not pick up pixels of the glyph next to it. */
     private static final int PADDING = 2;
 
+    /**
+     * The thin strokes of a calligraphy font only cover part of a pixel at text sizes and there is no hinting, so
+     * light text on a dark background looks faint. This curve makes partly covered pixels stronger.
+     */
+    private static final byte[] COVERAGE = new byte[256];
+
+    static {
+        for (int i = 0; i < 256; i++) COVERAGE[i] = (byte) Math.min(255, Math.round(255 * Math.pow(i / 255.0, 0.72)));
+    }
+
     private final FontSet set;
     private final int height;
     private final float scale, fallbackScale;
@@ -70,7 +80,16 @@ public class Font {
     }
 
     public double render(TextBatch batch, String string, double x, double y, Color color, double scale) {
+        return render(batch, string, x, y, color, scale, false);
+    }
+
+    /**
+     * @param snap puts every glyph on a whole pixel. With a font made for exactly the size that is drawn (scale 1) the
+     *             glyph pixels then land on screen pixels one to one, which is as sharp as text can be.
+     */
+    public double render(TextBatch batch, String string, double x, double y, Color color, double scale, boolean snap) {
         y += ascent * this.scale * scale;
+        double baseline = snap ? Math.round(y) : y;
 
         int length = string.length();
 
@@ -84,11 +103,16 @@ public class Font {
                 MeshBuilder mesh = batch.mesh(c.page);
                 mesh.ensureQuadCapacity();
 
+                double left = snap ? Math.round(x + c.x0 * scale) : x + c.x0 * scale;
+                double right = left + (c.x1 - c.x0) * scale;
+                double top = baseline + c.y0 * scale;
+                double bottom = baseline + c.y1 * scale;
+
                 mesh.quad(
-                    mesh.vec2(x + c.x0 * scale, y + c.y0 * scale).vec2(c.u0, c.v0).color(color).next(),
-                    mesh.vec2(x + c.x0 * scale, y + c.y1 * scale).vec2(c.u0, c.v1).color(color).next(),
-                    mesh.vec2(x + c.x1 * scale, y + c.y1 * scale).vec2(c.u1, c.v1).color(color).next(),
-                    mesh.vec2(x + c.x1 * scale, y + c.y0 * scale).vec2(c.u1, c.v0).color(color).next()
+                    mesh.vec2(left, top).vec2(c.u0, c.v0).color(color).next(),
+                    mesh.vec2(left, bottom).vec2(c.u0, c.v1).color(color).next(),
+                    mesh.vec2(right, bottom).vec2(c.u1, c.v1).color(color).next(),
+                    mesh.vec2(right, top).vec2(c.u1, c.v0).color(color).next()
                 );
             }
 
@@ -167,6 +191,16 @@ public class Font {
             int offset = py * GlyphPage.SIZE + px;
             ByteBuffer target = page.bitmap.slice(offset, page.bitmap.capacity() - offset);
             STBTruetype.stbtt_MakeGlyphBitmap(file.info, target, width, glyphHeight, GlyphPage.SIZE, fileScale, fileScale, index);
+
+            for (int row = 0; row < glyphHeight; row++) {
+                int start = (py + row) * GlyphPage.SIZE + px;
+
+                for (int column = 0; column < width; column++) {
+                    int at = start + column;
+                    page.bitmap.put(at, COVERAGE[page.bitmap.get(at) & 0xFF]);
+                }
+            }
+
             page.markDirty();
 
             float inverse = 1f / GlyphPage.SIZE;

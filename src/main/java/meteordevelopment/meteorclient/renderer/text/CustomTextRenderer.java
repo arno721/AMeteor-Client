@@ -9,22 +9,42 @@ import meteordevelopment.meteorclient.utils.render.color.Color;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class CustomTextRenderer implements TextRenderer {
     public static final Color SHADOW_COLOR = new Color(60, 60, 60, 180);
+
+    /** Text of scale 1 is this many pixels high. */
+    private static final double PIXELS_PER_SCALE = 18;
+    private static final int MIN_PIXELS = 6, MAX_PIXELS = 400;
+    /** How many sizes are kept. Sizes that were not used for a while are thrown away. */
+    private static final int MAX_SIZES = 16;
 
     private final TextBatch batch = new TextBatch();
 
     public final FontFace fontFace;
     private final FontSet fontSet;
 
-    private final Font[] fonts;
+    /**
+     * One font for every size in pixels that is drawn. Every glyph is made for exactly the size it is drawn at and put
+     * on a whole pixel, scaling a glyph made for another size makes text blurry.
+     */
+    private final LinkedHashMap<Integer, Font> fonts = new LinkedHashMap<>(32, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Integer, Font> eldest) {
+            if (size() <= MAX_SIZES || building) return false;
+
+            eldest.getValue().destroy();
+            return true;
+        }
+    };
+
     private Font font;
+    private int pixels = 18;
 
     private boolean building;
     private boolean scaleOnly;
-    private double fontScale = 1;
-    private double scale = 1;
 
     /**
      * @param fontFace the font for letters, numbers and symbols
@@ -34,10 +54,7 @@ public class CustomTextRenderer implements TextRenderer {
         this.fontFace = fontFace;
         this.fontSet = new FontSet(fontFace, fallback);
 
-        fonts = new Font[5];
-        for (int i = 0; i < fonts.length; i++) {
-            fonts[i] = new Font(fontSet, (int) Math.round(27 * ((i * 0.5) + 1)));
-        }
+        fontFor((int) PIXELS_PER_SCALE);
     }
 
     /** The font files, for code that makes its own fonts of other heights. */
@@ -50,6 +67,17 @@ public class CustomTextRenderer implements TextRenderer {
         return fontSet.canRender(text);
     }
 
+    private Font fontFor(int pixels) {
+        Font font = fonts.get(pixels);
+
+        if (font == null) {
+            font = new Font(fontSet, pixels);
+            fonts.put(pixels, font);
+        }
+
+        return font;
+    }
+
     @Override
     public void setAlpha(double a) {
         batch.setAlpha(a);
@@ -59,40 +87,28 @@ public class CustomTextRenderer implements TextRenderer {
     public void begin(GuiGraphicsExtractor graphics, double scale, boolean scaleOnly, boolean big) {
         if (building) throw new RuntimeException("CustomTextRenderer.begin() called twice");
 
-        if (big) {
-            this.font = fonts[fonts.length - 1];
-        } else {
-            double scaleA = Math.floor(scale * 10) / 10;
-
-            int scaleI;
-            if (scaleA >= 3) scaleI = 5;
-            else if (scaleA >= 2.5) scaleI = 4;
-            else if (scaleA >= 2) scaleI = 3;
-            else if (scaleA >= 1.5) scaleI = 2;
-            else scaleI = 1;
-
-            font = fonts[scaleI - 1];
-        }
+        this.pixels = (int) Math.max(MIN_PIXELS, Math.min(MAX_PIXELS, Math.round(PIXELS_PER_SCALE * scale)));
+        this.font = fontFor(pixels);
 
         this.building = true;
         this.scaleOnly = scaleOnly;
-
-        this.fontScale = font.getHeight() / 27.0;
-        this.scale = 1 + (scale - fontScale) / fontScale;
     }
 
     @Override
     public double getWidth(String text, int length, boolean shadow) {
         if (text.isEmpty()) return 0;
 
-        Font font = building ? this.font : fonts[0];
-        return (font.getWidth(text, length) + (shadow ? 1 : 0)) * scale / 1.5;
+        Font font = building ? this.font : fontFor((int) PIXELS_PER_SCALE);
+        int pixels = building ? this.pixels : (int) PIXELS_PER_SCALE;
+
+        return font.getWidth(text, length) + (shadow ? pixels / 27.0 : 0);
     }
 
     @Override
     public double getHeight(boolean shadow) {
-        Font font = building ? this.font : fonts[0];
-        return (font.getHeight() + 1 + (shadow ? 1 : 0)) * scale / 1.5;
+        int pixels = building ? this.pixels : (int) PIXELS_PER_SCALE;
+
+        return pixels + pixels / 27.0 * (shadow ? 2 : 1);
     }
 
     @Override
@@ -104,12 +120,13 @@ public class CustomTextRenderer implements TextRenderer {
             int preShadowA = SHADOW_COLOR.a;
             SHADOW_COLOR.a = (int) (color.a / 255.0 * preShadowA);
 
-            width = font.render(batch, text, x + fontScale * scale / 1.5, y + fontScale * scale / 1.5, SHADOW_COLOR, scale / 1.5);
-            font.render(batch, text, x, y, color, scale / 1.5);
+            double offset = Math.max(1, Math.round(pixels / 27.0));
+            width = font.render(batch, text, x + offset, y + offset, SHADOW_COLOR, 1, true);
+            font.render(batch, text, x, y, color, 1, true);
 
             SHADOW_COLOR.a = preShadowA;
         } else {
-            width = font.render(batch, text, x, y, color, scale / 1.5);
+            width = font.render(batch, text, x, y, color, 1, true);
         }
 
         return width;
@@ -128,12 +145,13 @@ public class CustomTextRenderer implements TextRenderer {
             if (!scaleOnly) batch.flush();
         } finally {
             building = false;
-            scale = 1;
         }
     }
 
     public void destroy() {
         batch.clear();
-        for (Font font : this.fonts) font.destroy();
+
+        for (Font font : fonts.values()) font.destroy();
+        fonts.clear();
     }
 }

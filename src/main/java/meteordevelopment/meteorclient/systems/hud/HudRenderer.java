@@ -149,12 +149,12 @@ public class HudRenderer {
             int preShadowA = CustomTextRenderer.SHADOW_COLOR.a;
             CustomTextRenderer.SHADOW_COLOR.a = (int) (color.a / 255.0 * preShadowA);
 
-            width = font.render(batch, text, x + 1, y + 1, CustomTextRenderer.SHADOW_COLOR, scale);
-            font.render(batch, text, x, y, color, scale);
+            width = font.render(batch, text, x + 1, y + 1, CustomTextRenderer.SHADOW_COLOR, scale, true);
+            font.render(batch, text, x, y, color, scale, true);
 
             CustomTextRenderer.SHADOW_COLOR.a = preShadowA;
         } else {
-            width = font.render(batch, text, x, y, color, scale);
+            width = font.render(batch, text, x, y, color, scale, true);
         }
 
         return width;
