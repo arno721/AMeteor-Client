@@ -6,6 +6,7 @@
 package meteordevelopment.meteorclient.gui.themes.meteor.widgets;
 
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
+import meteordevelopment.meteorclient.gui.fx.UiFx;
 import meteordevelopment.meteorclient.gui.themes.meteor.MeteorWidget;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
 import meteordevelopment.meteorclient.gui.widgets.containers.WWindow;
@@ -25,6 +26,8 @@ public class WMeteorWindow extends WWindow implements MeteorWidget {
         if (expanded || animProgress > 0) {
             renderer.quad(x, y + header.height, width, height - header.height, theme().backgroundColor.get());
         }
+
+        UiFx.windowBorder(renderer, x, y, width, expanded || animProgress > 0 ? height : header.height, theme().scale(1));
     }
 
     private class WMeteorHeader extends WHeader {
@@ -35,6 +38,7 @@ public class WMeteorWindow extends WWindow implements MeteorWidget {
         @Override
         protected void onRender(GuiRenderer renderer, double mouseX, double mouseY, double delta) {
             renderer.quad(this, theme().accentColor.get());
+            UiFx.headerShine(renderer, x, y, width, height);
         }
     }
 }

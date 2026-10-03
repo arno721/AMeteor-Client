@@ -38,9 +38,12 @@ import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.FireworkRocketEntity;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.item.ArrowItem;
 import net.minecraft.world.item.CrossbowItem;
+import net.minecraft.world.item.FireworkRocketItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ChargedProjectiles;
@@ -75,6 +78,7 @@ public class CrossbowRagebot extends Module {
     private static final int ROTATION_PRIORITY = -50;
     /** The speed of an arrow shot with a crossbow, in blocks per tick. */
     private static final double ARROW_SPEED = 3.15;
+    private static final double FIREWORK_SPEED = 1.6;
     /** Ticks to wait before a slot is looked at again after it was shot, until the server has unloaded it. */
     private static final int SHOT_LIMBO_TICKS = 5;
 
@@ -96,6 +100,11 @@ public class CrossbowRagebot extends Module {
         }
     }
 
+    public enum Mode {
+        Arrow,
+        Firework
+    }
+
     public enum AimPoint {
         Body,
         Head,
@@ -113,6 +122,23 @@ public class CrossbowRagebot extends Module {
         .name("auto-switch")
         .description("Switches between the crossbows in your hotbar: to a loaded one to shoot, to an empty one to load it.")
         .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Mode> mode = sgGeneral.add(new EnumSetting.Builder<Mode>()
+        .name("mode")
+        .description("Arrow shoots arrows. Firework loads firework rockets into the crossbow: they fly straight and slower, only as far as their flight duration, and there is no rapid fire.")
+        .defaultValue(Mode.Arrow)
+        .build()
+    );
+
+    private final Setting<Double> fireworkBlast = sgBallistics.add(new DoubleSetting.Builder()
+        .name("firework-blast")
+        .description("A firework shot counts as a hit when it passes this close to the target: the explosion hurts everything within 5 blocks, if the rocket has a star.")
+        .defaultValue(2.0)
+        .range(0, 5)
+        .sliderRange(0, 5)
+        .visible(() -> mode.get() == Mode.Firework)
         .build()
     );
 
@@ -297,13 +323,6 @@ public class CrossbowRagebot extends Module {
         .build()
     );
 
-    private final Setting<Boolean> compensateOwnMotion = sgBallistics.add(new BoolSetting.Builder()
-        .name("compensate-own-motion")
-        .description("Adds your own movement to the arrow. Off by default: measured arrows do not inherit it, turn on only if your server does.")
-        .defaultValue(false)
-        .build()
-    );
-
     private final Setting<Boolean> predictOwnStep = sgBallistics.add(new BoolSetting.Builder()
         .name("predict-own-step")
         .description("The arrow is made where you are after this tick's step. Aims from there, which matters a lot when you move fast.")
@@ -448,6 +467,8 @@ public class CrossbowRagebot extends Module {
     private static final class Shot {
         final int index, targetId, tick;
         final Solution solution;
+        /** The projectile flies like a firework rocket. */
+        boolean firework;
         /** The turn that was really sent right before the shot. */
         float sentYaw, sentPitch;
         /** What is written at the time of the shot. The rest is added when the arrow has landed. */
@@ -496,6 +517,10 @@ public class CrossbowRagebot extends Module {
     /** How many valid targets there are in range right now. */
     private int candidateCount;
     private int lobBudget;
+    /** What is loaded now flies like a firework rocket: straight, without gravity or drag. */
+    private boolean fireworkPhysics;
+    /** How many ticks a firework rocket flies at least, from its flight duration. */
+    private int fireworkTicks = 20;
     private static final int LOBS_PER_TICK = 6;
     /** A lob goes nearly straight up and comes down about five seconds later. */
     private static final int LOB_MAX_TICKS = 160;
@@ -594,7 +619,9 @@ public class CrossbowRagebot extends Module {
         int loaded = findSlot(crossbows, held, true);
 
         // The speed depends on what is loaded, firework rockets are slower than arrows
-        double speed = loaded >= 0 ? speedOf(mc.player.getInventory().getItem(loaded)) : ARROW_SPEED;
+        fireworkPhysics = loaded >= 0 ? isFireworkLoaded(mc.player.getInventory().getItem(loaded)) : mode.get() == Mode.Firework;
+        if (loaded >= 0 && fireworkPhysics) fireworkTicks = fireworkTicksOf(mc.player.getInventory().getItem(loaded));
+        double speed = loaded >= 0 ? speedOf(mc.player.getInventory().getItem(loaded)) : fireworkPhysics ? FIREWORK_SPEED : ARROW_SPEED;
         chooseTarget(speed);
 
         // Bow Spam mode: the key stays down for as long as there is something left to shoot at
@@ -650,7 +677,7 @@ public class CrossbowRagebot extends Module {
 
     /** Bow Spam, when it is on, spams crossbows and this module is allowed to use it. */
     private BowSpam bowSpam() {
-        if (!useBowSpam.get()) return null;
+        if (!useBowSpam.get() || mode.get() == Mode.Firework) return null;
 
         BowSpam spam = Modules.get().get(BowSpam.class);
         return spam != null && spam.isActive() && spam.spamsCrossbows() ? spam : null;
@@ -658,7 +685,10 @@ public class CrossbowRagebot extends Module {
 
     /** Whether Bow Spam leaves its crossbows to this module right now. */
     public boolean takesOverBowSpam() {
-        return isActive() && bowSpam() != null;
+        if (!isActive()) return false;
+
+        // In the firework mode there is no rapid fire, but Bow Spam still must not shoot the rockets wherever you look
+        return bowSpam() != null || (mode.get() == Mode.Firework && useBowSpam.get());
     }
 
     /** Moves a loaded crossbow from the inventory into the hotbar. True when something was moved. */
@@ -714,6 +744,32 @@ public class CrossbowRagebot extends Module {
         return !isInLimbo(slot) && !CrossbowItem.isCharged(mc.player.getInventory().getItem(slot));
     }
 
+    private static boolean isFireworkLoaded(ItemStack crossbow) {
+        ChargedProjectiles projectiles = crossbow.get(DataComponents.CHARGED_PROJECTILES);
+        if (projectiles == null || projectiles.isEmpty()) return false;
+
+        for (ItemStack stack : projectiles.itemCopies()) {
+            if (stack.getItem() instanceof FireworkRocketItem) return true;
+        }
+
+        return false;
+    }
+
+    /** A rocket flies for 10 ticks per step of flight duration (and one more), plus a random 0 to 11. This is the least. */
+    private static int fireworkTicksOf(ItemStack crossbow) {
+        ChargedProjectiles projectiles = crossbow.get(DataComponents.CHARGED_PROJECTILES);
+        if (projectiles == null) return 20;
+
+        for (ItemStack stack : projectiles.itemCopies()) {
+            if (!(stack.getItem() instanceof FireworkRocketItem)) continue;
+
+            var fireworks = stack.get(DataComponents.FIREWORKS);
+            return 10 * (1 + (fireworks != null ? fireworks.flightDuration() : 1));
+        }
+
+        return 20;
+    }
+
     private static double speedOf(ItemStack crossbow) {
         ChargedProjectiles projectiles = crossbow.get(DataComponents.CHARGED_PROJECTILES);
         return projectiles == null || projectiles.isEmpty() ? ARROW_SPEED : CrossbowItemAccessor.meteor$getSpeed(projectiles);
@@ -728,7 +784,7 @@ public class CrossbowRagebot extends Module {
 
         for (int slot = 0; slot < mc.player.getInventory().getContainerSize(); slot++) {
             ItemStack stack = mc.player.getInventory().getItem(slot);
-            if (stack.getItem() instanceof ArrowItem) count += stack.getCount();
+            if (mode.get() == Mode.Firework ? stack.getItem() instanceof FireworkRocketItem : stack.getItem() instanceof ArrowItem) count += stack.getCount();
         }
 
         return count;
@@ -777,6 +833,7 @@ public class CrossbowRagebot extends Module {
         if (solution != null && target != null) {
             shot = new Shot(++shotCounter, target.getId(), tickCounter, solution);
             lastShotTarget = target.getId();
+            shot.firework = fireworkPhysics;
             shot.sentYaw = mc.player.getYRot();
             shot.sentPitch = mc.player.getXRot();
 
@@ -813,6 +870,17 @@ public class CrossbowRagebot extends Module {
         if (empty < 0) {
             releaseKey();
             return;
+        }
+
+        if (mode.get() == Mode.Firework && !(mc.player.getOffhandItem().getItem() instanceof FireworkRocketItem) && !mc.player.isUsingItem()) {
+            FindItemResult rockets = InvUtils.find(stack -> stack.getItem() instanceof FireworkRocketItem);
+
+            if (rockets.found() && !rockets.isOffhand()) {
+                releaseKey();
+                event("SWAP", "firework rockets from slot %d to the offhand, the crossbow takes its projectile from there".formatted(rockets.slot()));
+                InvUtils.move().from(rockets.slot()).toOffhand();
+                return;
+            }
         }
 
         if (empty != held) {
@@ -991,7 +1059,7 @@ public class CrossbowRagebot extends Module {
             Solution solved = solve(candidate, speed, false);
 
             // The direct shot is blocked or has no solution: try the high lob (only a few per tick, it costs more)
-            if (highArc.get() && lobBudget > 0 && (solved == null || solved.impact.blocked)) {
+            if (highArc.get() && !fireworkPhysics && lobBudget > 0 && (solved == null || solved.impact.blocked)) {
                 lobBudget--;
                 String directFailure = solveFailure;
                 Solution lob = solve(candidate, speed, true);
@@ -1194,7 +1262,7 @@ public class CrossbowRagebot extends Module {
 
     private Solution solve(Entity entity, double speed, boolean lob) {
         solveFailure = "";
-        int limit = lob ? LOB_MAX_TICKS : maxFlightTicks.get();
+        int limit = lob ? LOB_MAX_TICKS : fireworkPhysics ? Math.min(maxFlightTicks.get(), fireworkTicks) : maxFlightTicks.get();
 
         // The server makes the arrow where the player is after this tick's step, which is not yet done at this point of the
         // tick: the position is where the player was after the last step. Measured: the arrow starts one step further.
@@ -1202,11 +1270,8 @@ public class CrossbowRagebot extends Module {
         // An arrow is made a little below the eyes
         Vec3 start = eyes.subtract(0, 0.1, 0);
 
+        // A projectile does not take over the movement of the shooter (measured)
         Vec3 own = Vec3.ZERO;
-        if (compensateOwnMotion.get()) {
-            Vec3 motion = mc.player.getDeltaMovement();
-            own = new Vec3(motion.x, mc.player.onGround() ? 0 : motion.y, motion.z);
-        }
 
         Vec3 velocity = velocityOf(entity);
 
@@ -1360,7 +1425,7 @@ public class CrossbowRagebot extends Module {
 
             previousDistance = distance;
             position = next;
-            velocity = velocity.scale(0.99).add(0, -0.05, 0);
+            if (!fireworkPhysics) velocity = velocity.scale(0.99).add(0, -0.05, 0);
         }
 
         return null;
@@ -1377,7 +1442,7 @@ public class CrossbowRagebot extends Module {
      */
     private double hitChance(Vec3 start, Vec3 own, float yaw, float pitch, double speed, double horizontal, AABB box, double margin, int limit) {
         Vec3 direction = Vec3.directionFromRotation(pitch, yaw);
-        AABB target = box.inflate(0.3, 0.25, 0.3);
+        AABB target = fireworkPhysics ? box.inflate(Math.max(0.3, fireworkBlast.get())) : box.inflate(0.3, 0.25, 0.3);
         int hits = 0;
 
         for (double[] spread : SPREAD) {
@@ -1417,7 +1482,7 @@ public class CrossbowRagebot extends Module {
         java.util.Set<Integer> present = new java.util.HashSet<>();
 
         for (Entity entity : mc.level.entitiesForRendering()) {
-            if (!(entity instanceof AbstractArrow arrow)) continue;
+            if (!(entity instanceof Projectile arrow) || !(arrow instanceof AbstractArrow || arrow instanceof FireworkRocketEntity)) continue;
 
             if (arrow.getOwner() != mc.player) {
                 if (!pendingShots.isEmpty() && otherArrows.add(arrow.getId())) {
@@ -1518,7 +1583,7 @@ public class CrossbowRagebot extends Module {
         if (hitIndex < 0 && track.vanished && n >= 2 && track.target.get(n - 1) != null) {
             Vec3 a1 = track.arrow.get(n - 1);
             Vec3 step = a1.subtract(track.arrow.get(n - 2));
-            Vec3 next = a1.add(step.x * 0.99, step.y * 0.99 - 0.05, step.z * 0.99);
+            Vec3 next = a1.add(afterTick(step, shot.firework));
             Vec3 t = track.target.get(n - 1);
             AABB box = new AABB(t.x - width / 2, t.y - height / 2, t.z - width / 2, t.x + width / 2, t.y + height / 2, t.z + width / 2).inflate(0.25);
 
@@ -1536,7 +1601,7 @@ public class CrossbowRagebot extends Module {
         if (hitIndex < 0 && track.vanished && n >= 2 && track.target.get(n - 1) != null) {
             Vec3 a1 = track.arrow.get(n - 1);
             Vec3 step = a1.subtract(track.arrow.get(n - 2));
-            Vec3 next = a1.add(step.x * 0.99, step.y * 0.99 - 0.05, step.z * 0.99);
+            Vec3 next = a1.add(afterTick(step, shot.firework));
             Vec3 t = track.target.get(n - 1);
             AABB targetBox = new AABB(t.x - width / 2, t.y - height / 2, t.z - width / 2, t.x + width / 2, t.y + height / 2, t.z + width / 2).inflate(0.25);
 
@@ -1563,7 +1628,7 @@ public class CrossbowRagebot extends Module {
                 if (targetBox.contains(end) || targetBox.clip(pos, end).isPresent()) extrapHit = true;
                 extrapMiss = Math.min(extrapMiss, end.distanceTo(t));
                 pos = end;
-                vel = new Vec3(vel.x * 0.99, vel.y * 0.99 - 0.05, vel.z * 0.99);
+                vel = afterTick(vel, shot.firework);
             }
         }
 
@@ -1677,6 +1742,11 @@ public class CrossbowRagebot extends Module {
         }
 
         l.row(csv);
+    }
+
+    /** The velocity of a projectile after one more tick: an arrow slows down and drops, a firework rocket flies on. */
+    private static Vec3 afterTick(Vec3 velocity, boolean firework) {
+        return firework ? velocity : new Vec3(velocity.x * 0.99, velocity.y * 0.99 - 0.05, velocity.z * 0.99);
     }
 
     private static String compact(Vec3 v) {
@@ -1938,7 +2008,7 @@ public class CrossbowRagebot extends Module {
         row(b, "ping / server tps", "%d ms = %s ticks / %s".formatted(ping, f(ping / 50.0), f(TickRate.INSTANCE.getTickRate())));
         row(b, "crossbow", "slot %d  %s  holds %s".formatted(slot, crossbow.getHoverName().getString(), describeProjectiles(crossbow)));
         row(b, "arrow speed used", f(d.speed) + " blocks per tick");
-        row(b, "own motion added to the arrow", vec(d.own) + (compensateOwnMotion.get() ? "" : "   (compensation is off)"));
+        row(b, "own motion added to the arrow", vec(d.own));
 
         title(b, "TARGET");
         row(b, "entity", "%s  (%s)  id %d  health %s".formatted(EntityUtils.getName(entity), entity.getType().getDescriptionId(), entity.getId(),
@@ -2060,14 +2130,16 @@ public class CrossbowRagebot extends Module {
     }
 
     /** What is known about the arrow when it first shows up, in particular the spread the server gave it. */
-    private String describeSpawn(Track track, AbstractArrow arrow) {
+    private String describeSpawn(Track track, Projectile arrow) {
         Shot shot = track.shot;
         Solution sol = shot.solution;
         Detail d = sol.detail;
 
         // The arrow may have flown a tick already, take that back: it moves, slows down by 1%, then drops by 0.05
         Vec3 velocity = arrow.getDeltaMovement();
-        for (int i = 0; i < arrow.tickCount; i++) velocity = velocity.add(0, 0.05, 0).scale(1 / 0.99);
+        if (!shot.firework) {
+            for (int i = 0; i < arrow.tickCount; i++) velocity = velocity.add(0, 0.05, 0).scale(1 / 0.99);
+        }
 
         // What the server made: (direction + random noise) * speed, plus the movement of the shooter
         Vec3 aimed = velocity.subtract(d.own);
@@ -2234,6 +2306,10 @@ public class CrossbowRagebot extends Module {
 
     public int getFollowedCount() {
         return statShots;
+    }
+
+    public boolean isFireworkMode() {
+        return mode.get() == Mode.Firework;
     }
 
     public int getArrowAmount() {
