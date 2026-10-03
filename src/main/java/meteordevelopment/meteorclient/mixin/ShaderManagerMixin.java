@@ -20,6 +20,7 @@ public abstract class ShaderManagerMixin {
     private void meteor$reloadPipelines(CallbackInfo ci) {
         MeteorRenderPipelines.precompile();
         IslandSdf.onShadersReloaded();
+        meteordevelopment.meteorclient.systems.modules.combat.CrossbowRageFx.onShadersReloaded();
         IslandImage.onShadersReloaded();
     }
 }

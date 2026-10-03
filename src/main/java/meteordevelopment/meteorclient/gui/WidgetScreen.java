@@ -11,7 +11,6 @@ import meteordevelopment.meteorclient.gui.renderer.GuiDebugRenderer;
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 import meteordevelopment.meteorclient.gui.tabs.TabScreen;
 import meteordevelopment.meteorclient.gui.utils.Anim;
-import meteordevelopment.meteorclient.gui.fx.UiFx;
 import meteordevelopment.meteorclient.gui.utils.Cell;
 import meteordevelopment.meteorclient.gui.widgets.WRoot;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
@@ -76,8 +75,6 @@ public abstract class WidgetScreen extends Screen {
 
         root.theme = theme;
 
-        if (parent == null) UiFx.onScreenOpen();
-
         if (parent != null) {
             animProgress = 1;
 
@@ -133,8 +130,6 @@ public abstract class WidgetScreen extends Screen {
 
         mouseX *= s;
         mouseY *= s;
-
-        UiFx.click(mouseX, mouseY);
 
         // Unfocus all text boxes that are not under the mouse cursor
         loopWidgets(root, widget -> {
@@ -292,9 +287,7 @@ public abstract class WidgetScreen extends Screen {
 
         RENDERER.begin(graphics);
         RENDERER.setAlpha(Anim.easeOutCubic(animProgress));
-        UiFx.background(RENDERER, mouseX, mouseY, delta / 20, 1);
         root.render(RENDERER, mouseX, mouseY, delta / 20);
-        UiFx.foreground(RENDERER, mouseX, mouseY, delta / 20, 1);
         RENDERER.setAlpha(1);
         RENDERER.end();
 

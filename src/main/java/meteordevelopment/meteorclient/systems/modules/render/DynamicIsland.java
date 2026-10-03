@@ -1228,8 +1228,12 @@ public class DynamicIsland extends Module {
                 if (wave) drawWaveform(c, valueRight, badgeY, 18 * u, a);
                 else if (!c.value.isEmpty()) addText(c.value, TEXT_VALUE, valueRight, badgeY, true, valueColor);
 
-                // The bar lines up with the left edge of the badge and ends the same distance from the right
-                if (c.progress >= 0) drawBar(left + 10 * u, top + 58 * u, right - left - 20 * u, 4 * u, accentColor, progress, a);
+                // The bar starts under the text, not at the edge of the card, and is no longer than a short bar: on a wide card
+                // (a long subtitle) a bar over the whole width looks out of place
+                if (c.progress >= 0) {
+                    double barW = Math.min(valueRight - x, 150 * u);
+                    drawBar(x, top + 58 * u, barW, 3.5 * u, accentColor, progress, a);
+                }
             }
         }
     }

@@ -6,7 +6,6 @@
 package meteordevelopment.meteorclient.gui.themes.meteor.widgets;
 
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
-import meteordevelopment.meteorclient.gui.fx.UiFx;
 import meteordevelopment.meteorclient.gui.themes.meteor.MeteorGuiTheme;
 import meteordevelopment.meteorclient.gui.themes.meteor.MeteorWidget;
 import meteordevelopment.meteorclient.gui.utils.Anim;
@@ -60,10 +59,7 @@ public class WMeteorModule extends WPressable implements MeteorWidget {
 
     @Override
     protected void onPressed(int button) {
-        if (button == MOUSE_BUTTON_LEFT) {
-            module.toggle();
-            UiFx.burst(x + width / 2, y + height / 2, theme().accentColor.get(), 1.4);
-        }
+        if (button == MOUSE_BUTTON_LEFT) module.toggle();
         else if (button == MOUSE_BUTTON_RIGHT) mc.gui.setScreen(theme.moduleScreen(module));
     }
 
@@ -81,14 +77,8 @@ public class WMeteorModule extends WPressable implements MeteorWidget {
         if (animationProgress1 > 0) {
             renderer.quad(x, y, width * Anim.easeOutCubic(animationProgress1), height, theme.moduleBackground.get());
         }
-        if (mouseOver) UiFx.moduleShimmer(renderer, x, y, width, height, Anim.easeOutCubic(animationProgress1));
-
         if (animationProgress2 > 0) {
-            if (UiFx.enabled()) {
-                UiFx.activeBar(renderer, x, y + height * (1 - Anim.easeOutCubic(animationProgress2)), theme.scale(2), height * Anim.easeOutCubic(animationProgress2), theme.scale(1));
-            } else {
-                renderer.quad(x, y + height * (1 - Anim.easeOutCubic(animationProgress2)), theme.scale(2), height * Anim.easeOutCubic(animationProgress2), theme.accentColor.get());
-            }
+            renderer.quad(x, y + height * (1 - Anim.easeOutCubic(animationProgress2)), theme.scale(2), height * Anim.easeOutCubic(animationProgress2), theme.accentColor.get());
         }
 
         double x = this.x + pad;

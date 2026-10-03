@@ -7,7 +7,6 @@ package meteordevelopment.meteorclient.gui.widgets.containers;
 
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 import meteordevelopment.meteorclient.gui.utils.Anim;
-import meteordevelopment.meteorclient.gui.fx.UiFx;
 import meteordevelopment.meteorclient.gui.utils.Cell;
 import meteordevelopment.meteorclient.gui.utils.WindowConfig;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
@@ -37,9 +36,6 @@ public abstract class WWindow extends WVerticalList {
     protected boolean dragged;
 
     protected double animProgress = 1;
-
-    private static final double[] INTRO = new double[2];
-    private int introIndex = -1;
 
     protected boolean moved = false;
     protected double movedX, movedY;
@@ -119,25 +115,10 @@ public abstract class WWindow extends WVerticalList {
     public boolean render(GuiRenderer renderer, double mouseX, double mouseY, double delta) {
         if (!visible) return true;
 
-        // The window flies in when the screen opens
-        double flyX = 0, flyY = 0;
-
-        if (UiFx.enabled()) {
-            if (introIndex < 0) introIndex = UiFx.nextWindowIndex();
-
-            if (UiFx.intro(introIndex, x, y, width, height, INTRO)) {
-                flyX = Math.round(INTRO[0]);
-                flyY = Math.round(INTRO[1]);
-                move(flyX, flyY);
-            }
-        }
-
         boolean scissor = (animProgress != 0 && animProgress != 1) || (expanded && animProgress != 1);
         if (scissor) renderer.scissorStart(x, y, width, (height - header.height) * Anim.easeInOutCubic(animProgress) + header.height);
         boolean toReturn = super.render(renderer, mouseX, mouseY, delta);
         if (scissor) renderer.scissorEnd();
-
-        if (flyX != 0 || flyY != 0) move(-flyX, -flyY);
 
         return toReturn;
     }

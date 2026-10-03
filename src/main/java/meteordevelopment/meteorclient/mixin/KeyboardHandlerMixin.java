@@ -11,6 +11,7 @@ import meteordevelopment.meteorclient.events.meteor.KeyInputEvent;
 import meteordevelopment.meteorclient.gui.GuiKeyEvents;
 import meteordevelopment.meteorclient.gui.WidgetScreen;
 import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.misc.input.KeyBinds;
 import meteordevelopment.meteorclient.utils.misc.input.Input;
 import meteordevelopment.meteorclient.utils.misc.input.KeyAction;
 import net.minecraft.client.KeyboardHandler;
@@ -47,7 +48,13 @@ public abstract class KeyboardHandlerMixin {
                 widgetScreen.keyRepeated(new KeyEvent(event.key(), event.scancode(), modifiers));
             }
 
-            if (GuiKeyEvents.canUseKeys) {
+            // A focused text box (the search of the Modules screen is focused when it opens) takes the keys, but the key that
+            // opens the GUI still has to close it. Only keys that are not typed (shift, control, function keys) can do that,
+            // or typing the letter would close it.
+            boolean closesGui = action == InputConstants.PRESS && event.key() >= InputConstants.KEY_ESCAPE
+                && Utils.canCloseGui() && KeyBinds.OPEN_GUI.matches(new KeyEvent(event.key(), event.scancode(), modifiers));
+
+            if (GuiKeyEvents.canUseKeys || closesGui) {
                 Input.setKeyState(event.key(), action != InputConstants.RELEASE);
                 if (MeteorClient.EVENT_BUS.post(KeyInputEvent.get(new KeyEvent(event.key(), event.scancode(), modifiers), KeyAction.get(action))).isCancelled())
                     ci.cancel();

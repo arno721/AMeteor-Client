@@ -13,6 +13,7 @@ import meteordevelopment.meteorclient.events.entity.DropItemsEvent;
 import meteordevelopment.meteorclient.events.entity.player.*;
 import meteordevelopment.meteorclient.mixininterface.IMultiPlayerGameMode;
 import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.meteorclient.systems.modules.combat.CrossbowRagebot;
 import meteordevelopment.meteorclient.systems.modules.player.BreakDelay;
 import meteordevelopment.meteorclient.systems.modules.player.SpeedMine;
 import meteordevelopment.meteorclient.utils.world.BlockUtils;
@@ -35,6 +36,7 @@ import net.minecraft.world.phys.EntityHitResult;
 import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -141,10 +143,50 @@ public abstract class MultiPlayerGameModeMixin implements IMultiPlayerGameMode {
         if (MeteorClient.EVENT_BUS.post(BreakBlockEvent.get(pos)).isCancelled()) cir.setReturnValue(false);
     }
 
+    @Unique
+    private boolean meteor$aimSwapped;
+    @Unique
+    private float meteor$savedYaw, meteor$savedPitch;
+
+    // Whatever sends the use packet (the game itself, Bow Spam, a held key) the packet carries the rotation of the player, so
+    // the crossbow ragebot makes sure it is the one it aims with
+    @Inject(method = "useItem", at = @At("HEAD"), order = 900)
+    private void meteor$aimForUse(Player player, InteractionHand hand, CallbackInfoReturnable<InteractionResult> cir) {
+        meteor$aimSwapped = false;
+
+        CrossbowRagebot ragebot = Modules.get().get(CrossbowRagebot.class);
+        float[] aim = ragebot != null ? ragebot.aimForUse(player, hand) : null;
+        if (aim == null) return;
+
+        meteor$savedYaw = player.getYRot();
+        meteor$savedPitch = player.getXRot();
+        player.setYRot(aim[0]);
+        player.setXRot(aim[1]);
+        meteor$aimSwapped = true;
+    }
+
+    @Inject(method = "useItem", at = @At("RETURN"))
+    private void meteor$restoreAim(Player player, InteractionHand hand, CallbackInfoReturnable<InteractionResult> cir) {
+        meteor$restoreAim(player);
+    }
+
+    @Unique
+    private void meteor$restoreAim(Player player) {
+        if (!meteor$aimSwapped) return;
+
+        player.setYRot(meteor$savedYaw);
+        player.setXRot(meteor$savedPitch);
+        meteor$aimSwapped = false;
+    }
+
     @Inject(method = "useItem", at = @At("HEAD"), cancellable = true)
     private void onUseItem(Player player, InteractionHand hand, CallbackInfoReturnable<InteractionResult> cir) {
         InteractItemEvent event = MeteorClient.EVENT_BUS.post(InteractItemEvent.get(hand));
-        if (event.toReturn != null) cir.setReturnValue(event.toReturn);
+        if (event.toReturn != null) {
+            // The method ends here, so the turn is given back here
+            meteor$restoreAim(player);
+            cir.setReturnValue(event.toReturn);
+        }
     }
 
     @Inject(method = "stopDestroyBlock", at = @At("HEAD"), cancellable = true)

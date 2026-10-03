@@ -326,6 +326,13 @@ public class CrossbowRagebot extends Module {
         .build()
     );
 
+    private final Setting<Boolean> predictTurns = sgBallistics.add(new BoolSetting.Builder()
+        .name("predict-turns")
+        .description("A target that turns, like a circling phantom, is followed along its curve instead of a straight line.")
+        .defaultValue(true)
+        .build()
+    );
+
     private final Setting<Boolean> predictOwnStep = sgBallistics.add(new BoolSetting.Builder()
         .name("predict-own-step")
         .description("The arrow is made where you are after this tick's step. Aims from there, which matters a lot when you move fast.")
@@ -431,45 +438,130 @@ public class CrossbowRagebot extends Module {
         .build()
     );
 
-    private final Setting<Boolean> chanceColors = sgRender.add(new BoolSetting.Builder()
-        .name("chance-colors")
-        .description("Colors the path and the boxes by the hit chance: red when it is low, green when it is high.")
+    private final Setting<Boolean> shaderFx = sgRender.add(new BoolSetting.Builder()
+        .name("shader-effects")
+        .description("Draws the effects with a shader: sharp, glowing and animated. When off (or when the shader cannot be used) simple lines are drawn.")
         .defaultValue(true)
         .build()
     );
 
-    private final Setting<Boolean> lockOn = sgRender.add(new BoolSetting.Builder()
-        .name("lock-on")
-        .description("Turning rings round the target, corners on the box where it will be and a line to it.")
-        .defaultValue(false)
+    private final Setting<FxColorMode> fxColorMode = sgRender.add(new EnumSetting.Builder<FxColorMode>()
+        .name("effect-colors")
+        .description("Chance: red when the shot is unlikely to hit and green when it is likely. Custom: the two colors below. Rainbow: slowly through all colors.")
+        .defaultValue(FxColorMode.Chance)
+        .visible(shaderFx::get)
         .build()
     );
 
-    private final Setting<Boolean> groundRing = sgRender.add(new BoolSetting.Builder()
-        .name("ground-ring")
-        .description("Rings and a spreading wave on the ground under the target, and a beam of light.")
-        .defaultValue(false)
+    private final Setting<SettingColor> fxPrimary = sgRender.add(new ColorSetting.Builder()
+        .name("primary-color")
+        .description("The main color of the effects.")
+        .defaultValue(new SettingColor(80, 200, 255, 255))
+        .visible(() -> shaderFx.get() && fxColorMode.get() == FxColorMode.Custom)
         .build()
     );
 
-    private final Setting<Boolean> flightPulse = sgRender.add(new BoolSetting.Builder()
-        .name("flight-pulse")
-        .description("A light with a tail that runs along the path of the shot.")
-        .defaultValue(false)
+    private final Setting<SettingColor> fxSecondary = sgRender.add(new ColorSetting.Builder()
+        .name("secondary-color")
+        .description("The second color: thin lines, the end of the path and the highlights.")
+        .defaultValue(new SettingColor(190, 120, 255, 255))
+        .visible(() -> shaderFx.get() && fxColorMode.get() == FxColorMode.Custom)
         .build()
     );
 
-    private final Setting<Boolean> shotTrails = sgRender.add(new BoolSetting.Builder()
-        .name("shot-trails")
-        .description("Shows the arrows on their way, and the path of arrows that are done fades away slowly.")
-        .defaultValue(false)
+    private final Setting<Double> fxIntensity = sgRender.add(new DoubleSetting.Builder()
+        .name("intensity")
+        .description("How bright the effects are.")
+        .defaultValue(1)
+        .range(0.1, 3)
+        .sliderRange(0.2, 2.5)
+        .visible(shaderFx::get)
         .build()
     );
 
-    private final Setting<Boolean> hitMarkers = sgRender.add(new BoolSetting.Builder()
-        .name("hit-markers")
-        .description("A green burst where an arrow hits and a small red ring where it misses.")
+    private final Setting<Double> fxGlow = sgRender.add(new DoubleSetting.Builder()
+        .name("glow")
+        .description("How strong the soft glow round the lines is.")
+        .defaultValue(1)
+        .range(0, 3)
+        .sliderRange(0, 2)
+        .visible(shaderFx::get)
+        .build()
+    );
+
+    private final Setting<Double> fxSpeed = sgRender.add(new DoubleSetting.Builder()
+        .name("animation-speed")
+        .description("How fast the effects move.")
+        .defaultValue(1)
+        .range(0.1, 4)
+        .sliderRange(0.2, 3)
+        .visible(shaderFx::get)
+        .build()
+    );
+
+    private final Setting<Double> fxScale = sgRender.add(new DoubleSetting.Builder()
+        .name("scale")
+        .description("The size of the effects.")
+        .defaultValue(1)
+        .range(0.3, 3)
+        .sliderRange(0.5, 2)
+        .visible(shaderFx::get)
+        .build()
+    );
+
+    private final Setting<Boolean> fxThroughWalls = sgRender.add(new BoolSetting.Builder()
+        .name("through-walls")
+        .description("Draws the effects through blocks. When off, blocks hide them.")
         .defaultValue(true)
+        .visible(shaderFx::get)
+        .build()
+    );
+
+    private final Setting<Boolean> fxReticle = sgRender.add(new BoolSetting.Builder()
+        .name("reticle")
+        .description("A reticle on the target that closes in when it locks on, with the hit chance as an arc round it.")
+        .defaultValue(true)
+        .visible(shaderFx::get)
+        .build()
+    );
+
+    private final Setting<Boolean> fxRibbon = sgRender.add(new BoolSetting.Builder()
+        .name("path-ribbon")
+        .description("A ribbon of light with moving pulses along the path of the shot, and on the arrows on their way.")
+        .defaultValue(true)
+        .visible(shaderFx::get)
+        .build()
+    );
+
+    private final Setting<Boolean> fxBursts = sgRender.add(new BoolSetting.Builder()
+        .name("impact-bursts")
+        .description("A shock wave with rays where an arrow hits, a small ring where it misses.")
+        .defaultValue(true)
+        .visible(shaderFx::get)
+        .build()
+    );
+
+    private final Setting<Boolean> fxGround = sgRender.add(new BoolSetting.Builder()
+        .name("ground-radar")
+        .description("A radar on the ground under the target, with a sweep, a wave and the hit chance round it.")
+        .defaultValue(false)
+        .visible(shaderFx::get)
+        .build()
+    );
+
+    private final Setting<Boolean> fxBeam = sgRender.add(new BoolSetting.Builder()
+        .name("light-beam")
+        .description("A beam of light, like a hologram, over the target.")
+        .defaultValue(false)
+        .visible(shaderFx::get)
+        .build()
+    );
+
+    private final Setting<Boolean> fxTrails = sgRender.add(new BoolSetting.Builder()
+        .name("fading-trails")
+        .description("The path of arrows that are done stays and fades away slowly.")
+        .defaultValue(false)
+        .visible(shaderFx::get)
         .build()
     );
 
@@ -534,6 +626,7 @@ public class CrossbowRagebot extends Module {
         final List<Vec3> arrow = new ArrayList<>();
         final List<Vec3> target = new ArrayList<>();
         int started;
+        int arrowId = -1;
         /** The arrow was removed from the world (it hit something) instead of timing out. */
         boolean vanished;
         /** What is known about the arrow at the moment it showed up. */
@@ -557,11 +650,24 @@ public class CrossbowRagebot extends Module {
     private final int[] shotAt = new int[9];
     private int releasedAt = -1000;
     private int lastShotTarget = -1;
+    /** Whether the shot is good enough. The switch mode shoots at a low chance too, as long as the arrow can get there. */
+    private boolean shotWorthTaking() {
+        if (solution == null) return false;
+
+        return solution.hitChance >= minHitChance.get() / 100.0 || (targetMode.get() == TargetMode.Switch && !solution.impact.blocked);
+    }
+
+    /** The target the switch mode is on, whether an arrow was shot at it, and since when it is on it. */
+    private int switchCurrent = -1, switchSince;
+    private boolean switchFired;
+    private static final int SWITCH_PATIENCE_TICKS = 100;
     /** The use key is kept down until this tick (Bow Spam mode). */
     private int holdUntil = -1;
     /** How many valid targets there are in range right now. */
     private int candidateCount;
     private int lobBudget;
+    /** The click of this module is being made (see {@link #aimForUse}). */
+    private boolean firing;
     /** What is loaded now flies like a firework rocket: straight, without gravity or drag. */
     private boolean fireworkPhysics;
     /** How many ticks a firework rocket flies at least, from its flight duration. */
@@ -601,6 +707,8 @@ public class CrossbowRagebot extends Module {
         pendingShots.clear();
         trails.clear();
         markers.clear();
+        flights.clear();
+        hitIds.clear();
         knownArrows.clear();
         otherArrows.clear();
         tracks.clear();
@@ -614,6 +722,8 @@ public class CrossbowRagebot extends Module {
         for (int i = 0; i < shotAt.length; i++) shotAt[i] = -1000;
         releasedAt = -1000;
         lastShotTarget = -1;
+        switchCurrent = -1;
+        switchFired = false;
     }
 
     @Override
@@ -653,6 +763,7 @@ public class CrossbowRagebot extends Module {
 
         trackPositions();
         watchArrows();
+        updateFlights();
 
         BowSpam spam = bowSpam();
         int[] crossbows = hotbarCrossbows();
@@ -689,14 +800,14 @@ public class CrossbowRagebot extends Module {
             wasPathing = false;
         }
 
-        if (target != null && solution != null && loaded >= 0 && solution.hitChance >= minHitChance.get() / 100.0) {
+        if (target != null && loaded >= 0 && shotWorthTaking()) {
             shoot(loaded, held);
             return;
         }
 
         // Out of loaded crossbows in the hotbar: bring a loaded one from the inventory, Bow Spam style
         if (target != null && solution != null && loaded < 0 && spam != null && spam.searchesInventory()
-            && solution.hitChance >= minHitChance.get() / 100.0 && pullLoadedCrossbow()) {
+            && shotWorthTaking() && pullLoadedCrossbow()) {
             Rotations.rotate(solution.yaw, solution.pitch, ROTATION_PRIORITY);
             return;
         }
@@ -880,6 +991,9 @@ public class CrossbowRagebot extends Module {
         if (solution != null && target != null) {
             shot = new Shot(++shotCounter, target.getId(), tickCounter, solution);
             lastShotTarget = target.getId();
+            // Only a shot with a good enough chance counts, the others are extra
+            if (target.getId() == switchCurrent && solution.hitChance >= minHitChance.get() / 100.0) switchFired = true;
+            lastShotChance = solution.hitChance;
             shot.firework = fireworkPhysics;
             shot.sentYaw = mc.player.getYRot();
             shot.sentPitch = mc.player.getXRot();
@@ -895,9 +1009,15 @@ public class CrossbowRagebot extends Module {
         // Bow Spam's way: switch to the crossbow just for the click and back, it does not wait for the crossbow to be charged again
         boolean spamStyle = bowSpam() != null;
 
-        if (spamStyle) InvUtils.swap(slot, true);
-        mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
-        if (spamStyle) InvUtils.swapBack();
+        firing = true;
+
+        try {
+            if (spamStyle) InvUtils.swap(slot, true);
+            mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
+            if (spamStyle) InvUtils.swapBack();
+        } finally {
+            firing = false;
+        }
         mc.player.swing(InteractionHand.MAIN_HAND);
 
         // The server takes a moment to tell that it is empty. Using it again now would start charging it by accident.
@@ -1034,6 +1154,22 @@ public class CrossbowRagebot extends Module {
 
         Vec3 velocity = last.position.subtract(from.position).scale(1.0 / ticks);
 
+        // A target that turns: the average over the last updates points the way it went a while ago, so the newest step is
+        // used, turned a little further to the way it points now
+        double omega = predictTurns.get() ? turnRateOf(entity) : 0;
+
+        if (Math.abs(omega) > 0.02 && all.length >= 3) {
+            Update before = all[all.length - 2];
+            double dt = last.tick - before.tick;
+
+            if (dt > 0) {
+                Vec3 newest = last.position.subtract(before.position).scale(1 / dt);
+                double turn = omega * dt / 2;
+                double c = Math.cos(turn), s = Math.sin(turn);
+                velocity = new Vec3(newest.x * c - newest.z * s, velocity.y, newest.x * s + newest.z * c);
+            }
+        }
+
         // Standing on the ground the height only wobbles
         return entity.onGround() ? new Vec3(velocity.x, 0, velocity.z) : velocity;
     }
@@ -1102,6 +1238,25 @@ public class CrossbowRagebot extends Module {
         Entity bestEntity = null;
         Solution best = null;
 
+        // Switch mode stays on its target until an arrow with a good enough chance was shot at it. Until then it keeps shooting
+        // at the prediction it has, even if the chance is low, so the rapid fire is never interrupted. If the target cannot be
+        // shot at at all, or after a long time, the turn goes on.
+        if (switching && switchCurrent != -1 && !switchFired && tickCounter - switchSince <= SWITCH_PATIENCE_TICKS) {
+            for (Entity candidate : candidates) {
+                if (candidate.getId() != switchCurrent) continue;
+
+                Solution solved = solve(candidate, speed, false);
+
+                if (solved != null && !solved.impact.blocked) {
+                    target = candidate;
+                    solution = solved;
+                    return;
+                }
+
+                break;
+            }
+        }
+
         for (Entity candidate : candidates) {
             Solution solved = solve(candidate, speed, false);
 
@@ -1132,6 +1287,7 @@ public class CrossbowRagebot extends Module {
             if (solved.hitChance >= needed) {
                 target = candidate;
                 solution = solved;
+                if (switching) noteSwitchTarget(candidate);
                 return;
             }
 
@@ -1144,6 +1300,16 @@ public class CrossbowRagebot extends Module {
         // None is good enough yet: keep looking at the best one and wait for its chance to go up
         target = bestEntity != null ? bestEntity : candidates.getFirst();
         solution = best;
+        if (switching) noteSwitchTarget(target);
+    }
+
+    /** The switch mode keeps this target until an arrow was shot at it. */
+    private void noteSwitchTarget(Entity chosen) {
+        if (chosen.getId() == switchCurrent) return;
+
+        switchCurrent = chosen.getId();
+        switchFired = false;
+        switchSince = tickCounter;
     }
 
     private boolean valid(Entity entity) {
@@ -1194,8 +1360,33 @@ public class CrossbowRagebot extends Module {
         double t = Math.min(ticks, 80);
         double x = base.x + velocity.x * t, z = base.z + velocity.z * t;
 
+        // A target that turns (a phantom circling, a player running a curve) goes along an arc, not a straight line. The turn
+        // slows down with time, because a turn does not go on for ever.
+        double omega = predictTurns.get() ? turnRateOf(entity) : 0;
+
+        if (Math.abs(omega) > 0.01 && Math.hypot(velocity.x, velocity.z) > 0.1) {
+            double vx = velocity.x, vz = velocity.z, w = omega;
+            x = base.x;
+            z = base.z;
+            int steps = (int) t;
+
+            for (int i = 0; i < steps; i++) {
+                x += vx;
+                z += vz;
+
+                double c = Math.cos(w), s = Math.sin(w);
+                double nx = vx * c - vz * s;
+                vz = vx * s + vz * c;
+                vx = nx;
+                w *= 0.96;
+            }
+
+            x += vx * (t - steps);
+            z += vz * (t - steps);
+        }
+
         // Running into a wall stops it, it does not walk through
-        if (Math.hypot(velocity.x * t, velocity.z * t) > 0.6) {
+        if (Math.hypot(x - base.x, z - base.z) > 0.6) {
             Vec3 end = new Vec3(x, base.y, z);
             BlockHitResult wall = mc.level.clip(new ClipContext(base, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player));
 
@@ -1208,8 +1399,11 @@ public class CrossbowRagebot extends Module {
 
         double y = base.y;
 
-        // In the air it moves like a player: the speed changes by gravity and drag every tick, until it lands
-        if (!entity.onGround() && !entity.isInWater()) {
+        if (isFlyer(entity)) {
+            // Something that flies has no gravity, it keeps the climb or the dive it has
+            y = Math.max(ground, base.y + velocity.y * t);
+        } else if (!entity.onGround() && !entity.isInWater()) {
+            // In the air it moves like a player: the speed changes by gravity and drag every tick, until it lands
             double vy = velocity.y;
             int steps = (int) t;
 
@@ -1227,6 +1421,63 @@ public class CrossbowRagebot extends Module {
         }
 
         return new Vec3(x, y, z);
+    }
+
+    /** Whether the target flies by itself, so that gravity does not pull on it. */
+    private boolean isFlyer(Entity entity) {
+        if (entity.isNoGravity()) return true;
+
+        switch (entity.getType().toShortString()) {
+            case "phantom", "ghast", "happy_ghast", "blaze", "vex", "bat", "ender_dragon", "bee", "allay", "parrot", "wither" -> {
+                return true;
+            }
+            default -> {
+            }
+        }
+
+        if (entity instanceof Player player && (player.getAbilities().flying || player.isFallFlying())) return true;
+
+        // Anything in the air whose height hardly changes does not fall
+        if (!entity.onGround() && !entity.isInWater()) {
+            ArrayDeque<Update> updates = history.get(entity.getId());
+
+            if (updates != null && updates.size() >= 3) {
+                Update[] u = updates.toArray(new Update[0]);
+                int n = u.length;
+                boolean flat = true;
+
+                for (int i = n - 1; i >= n - 2; i--) {
+                    double dt = u[i].tick - u[i - 1].tick;
+                    if (dt <= 0 || Math.abs((u[i].position.y - u[i - 1].position.y) / dt) > 0.035) flat = false;
+                }
+
+                return flat;
+            }
+        }
+
+        return false;
+    }
+
+    /** How fast the horizontal direction of the target turns, in radians per tick (positive is counter clockwise), or 0. */
+    private double turnRateOf(Entity entity) {
+        ArrayDeque<Update> updates = history.get(entity.getId());
+        if (updates == null || updates.size() < 3) return 0;
+
+        Update[] u = updates.toArray(new Update[0]);
+        int n = u.length;
+
+        double dta = u[n - 2].tick - u[n - 3].tick, dtb = u[n - 1].tick - u[n - 2].tick;
+        if (dta <= 0 || dtb <= 0 || tickCounter - u[n - 1].tick > 6) return 0;
+
+        Vec3 va = u[n - 2].position.subtract(u[n - 3].position).scale(1 / dta);
+        Vec3 vb = u[n - 1].position.subtract(u[n - 2].position).scale(1 / dtb);
+
+        if (Math.hypot(va.x, va.z) < 0.12 || Math.hypot(vb.x, vb.z) < 0.12) return 0;
+
+        double change = Mth.wrapDegrees((float) Math.toDegrees(Math.atan2(vb.z, vb.x) - Math.atan2(va.z, va.x)));
+        double omega = Math.toRadians(change) / ((dta + dtb) / 2.0);
+
+        return Mth.clamp(omega, -0.3, 0.3);
     }
 
     /**
@@ -1556,6 +1807,7 @@ public class CrossbowRagebot extends Module {
 
                 track = new Track(pendingShots.removeFirst(), tickCounter);
                 tracks.put(arrow.getId(), track);
+                track.arrowId = arrow.getId();
 
                 try {
                     if (log() != null) track.spawn = describeSpawn(track, arrow);
@@ -2300,6 +2552,27 @@ public class CrossbowRagebot extends Module {
         return (System.nanoTime() - FX_START) / 1e9;
     }
 
+    /** Hue (only the fraction counts), saturation and value, written to out. */
+    private static Color hsv(double hue, double saturation, double value, int alpha, Color out) {
+        double h6 = (hue - Math.floor(hue)) * 6;
+        int sector = (int) h6;
+        double f = h6 - sector;
+        double p = value * (1 - saturation), q = value * (1 - saturation * f), t = value * (1 - saturation * (1 - f));
+
+        double red, green, blue;
+
+        switch (sector) {
+            case 0 -> { red = value; green = t; blue = p; }
+            case 1 -> { red = q; green = value; blue = p; }
+            case 2 -> { red = p; green = value; blue = t; }
+            case 3 -> { red = p; green = q; blue = value; }
+            case 4 -> { red = t; green = p; blue = value; }
+            default -> { red = value; green = p; blue = q; }
+        }
+
+        return out.set((int) (red * 255), (int) (green * 255), (int) (blue * 255), Mth.clamp(alpha, 0, 255));
+    }
+
     /** Red when the shot is hopeless, over yellow, to green when it is sure. */
     private static Color chanceColor(double chance, int alpha, Color out) {
         double c = Mth.clamp(chance, 0, 1);
@@ -2310,54 +2583,50 @@ public class CrossbowRagebot extends Module {
 
     @EventHandler
     private void onRender(Render3DEvent event) {
-        Renderer3D r = event.renderer;
         double now = fxNow();
         double chance = solution != null ? solution.hitChance : 0;
+        boolean shader = shaderFx.get() && CrossbowRageFx.isAvailable();
 
-        if (shotTrails.get()) drawTrails(r, now);
-        if (hitMarkers.get()) drawMarkers(r, now);
-        if (shotTrails.get()) drawFlights(r, now);
+        if (shader) {
+            try {
+                renderShaderFx(event, now, chance);
+            } catch (Throwable t) {
+                fx.abort();
+                CrossbowRageFx.markBroken();
+                MeteorClient.LOG.warn("Drawing the Crossbow Ragebot shader effects failed, using lines.", t);
+                shader = false;
+            }
+        }
 
-        if (target != null && !target.isRemoved() && solution != null) {
-            if (lockOn.get()) drawLockOn(r, now, chance);
-            if (groundRing.get()) drawGroundRing(r, now, chance);
+        Renderer3D r = event.renderer;
+
+        // Without the shader: lines
+        if (!shader) {
+            drawTrails(r, now);
+            drawMarkers(r, now);
+            drawFlights(r, now);
+
+            if (target != null && !target.isRemoved() && solution != null) drawLockOn(r, now, chance);
         }
 
         if (!renderPath.get() || solution == null || solution.impact.path == null) return;
 
         List<Vec3> path = solution.impact.path;
-        Color line = chanceColors.get() ? chanceColor(chance, 210, fx1) : pathColor.get();
+        Color line = shader ? fxA : chanceColor(chance, 210, fx1);
 
-        for (int i = 1; i < path.size(); i++) {
-            Vec3 a = path.get(i - 1), b = path.get(i);
-            r.line(a.x, a.y, a.z, b.x, b.y, b.z, line);
-        }
-
-        // Light that runs along the path, with a short tail
-        if (flightPulse.get() && path.size() > 1) {
-            double position = (now * 1.6) % 1.0 * (path.size() - 1);
-
-            for (int tail = 0; tail < 4; tail++) {
-                double p = position - tail * 0.35;
-                if (p < 0) continue;
-
-                int index = Math.min((int) p, path.size() - 2);
-                Vec3 a = path.get(index), b = path.get(index + 1);
-                double f = p - index;
-                double size = 0.09 * (1 - tail * 0.2);
-                double x = a.x + (b.x - a.x) * f, y = a.y + (b.y - a.y) * f, z = a.z + (b.z - a.z) * f;
-
-                fx2.set(255, 255, 255, 230 - tail * 55);
-                r.box(x - size, y - size, z - size, x + size, y + size, z + size, fx2, fx2, ShapeMode.Both, 0);
+        if (!shader || !fxRibbon.get()) {
+            for (int i = 1; i < path.size(); i++) {
+                Vec3 a = path.get(i - 1), b = path.get(i);
+                r.line(a.x, a.y, a.z, b.x, b.y, b.z, line);
             }
         }
 
         if (renderPrediction.get()) {
             AABB box = solution.predictedBox;
-            Color sides = chanceColors.get() ? chanceColor(chance, 60, fx2) : impactColor.get();
+            Color sides = shader ? fxSide.set(fxA.r, fxA.g, fxA.b, 50) : chanceColor(chance, 60, fx2);
             r.box(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, sides, line, ShapeMode.Both, 0);
 
-            if (lockOn.get()) {
+            if (!shader) {
                 drawBrackets(r, box.inflate(0.12), chanceColor(chance, 255, fx3));
 
                 // A line from where the target is to where it will be
@@ -2372,8 +2641,141 @@ public class CrossbowRagebot extends Module {
         }
 
         Vec3 end = solution.impact.point;
-        Color endSides = chanceColors.get() ? chanceColor(chance, 80, fx2) : impactColor.get();
+        Color endSides = shader ? fxSide.set(fxA.r, fxA.g, fxA.b, 70) : chanceColor(chance, 80, fx2);
         r.box(end.x - 0.25, end.y - 0.25, end.z - 0.25, end.x + 0.25, end.y + 0.25, end.z + 0.25, endSides, line, ShapeMode.Both, 0);
+    }
+
+    // The effects with the shader
+
+    private final CrossbowRageFx fx = new CrossbowRageFx();
+    private final Color fxA = new Color(), fxB = new Color(), fxSide = new Color(), fxHitA = new Color(), fxHitB = new Color();
+    private int lockId = -1;
+    private double lockTime;
+
+    public enum FxColorMode {
+        Chance,
+        Custom,
+        Rainbow
+    }
+
+    /** The two colors of the effects for a hit chance. */
+    private void fxColors(double chance, double now, Color outA, Color outB) {
+        switch (fxColorMode.get()) {
+            case Chance -> {
+                chanceColor(chance, 255, outA);
+                outB.set(outA.r + (255 - outA.r) * 55 / 100, outA.g + (255 - outA.g) * 55 / 100, outA.b + (255 - outA.b) * 55 / 100, 255);
+            }
+            case Custom -> {
+                outA.set(fxPrimary.get());
+                outB.set(fxSecondary.get());
+                outA.a = outB.a = 255;
+            }
+            case Rainbow -> {
+                hsv(now * 0.1 * fxSpeed.get(), 0.75, 1, 255, outA);
+                hsv(now * 0.1 * fxSpeed.get() + 0.35, 0.6, 1, 255, outB);
+            }
+        }
+    }
+
+    private void renderShaderFx(Render3DEvent event, double now, double chance) {
+        double scale = fxScale.get();
+        Vec3 camera = new Vec3(event.offsetX, event.offsetY, event.offsetZ);
+
+        fx.begin(camera, now, fxIntensity.get(), fxGlow.get(), fxSpeed.get());
+        fxColors(chance, now, fxA, fxB);
+
+        if (target != null && !target.isRemoved() && solution != null) {
+            if (target.getId() != lockId) {
+                lockId = target.getId();
+                lockTime = now;
+            }
+
+            double lock = Mth.clamp((now - lockTime) / 0.6, 0, 1);
+            Vec3 centre = target.getBoundingBox().getCenter();
+            double ground = solution.detail.ground();
+
+            if (fxReticle.get()) {
+                double size = (Math.max(target.getBbWidth(), target.getBbHeight()) * 0.5 + 0.6) * scale;
+                fx.billboard(centre, size, CrossbowRageFx.RETICLE, lock, chance, 0, fxA, fxB, 1);
+            }
+
+            if (fxGround.get()) {
+                double size = Math.max(target.getBbWidth(), 0.7) * 2.4 * scale;
+                fx.flat(new Vec3(centre.x, ground + 0.03, centre.z), size, CrossbowRageFx.RADAR, 0, chance, 0, fxA, fxB, 1);
+            }
+
+            if (fxBeam.get()) {
+                fx.beam(new Vec3(centre.x, ground, centre.z), 0.45 * scale, 2.8 * scale, fxA, fxB, 1);
+            }
+        } else {
+            lockId = -1;
+        }
+
+        if (fxRibbon.get()) {
+            if (renderPath.get() && solution != null && solution.impact.path != null) {
+                fx.ribbon(solution.impact.path, 0.06 * scale, 1, true, fxA, fxB, 1);
+
+                // Where it lands
+                fx.billboard(solution.impact.point, 0.5 * scale, CrossbowRageFx.BURST, 0.35, 0, 0, fxA, fxB, 0.7);
+            }
+
+            // The arrows on their way, all of them
+            for (FxFlight flight : flights.values()) {
+                if (flight.points.size() < 2) continue;
+
+                fxColors(flight.chance, now, fxHitA, fxHitB);
+                fx.ribbon(flight.points, 0.09 * scale, 1, false, fxHitA, fxHitB, 1);
+
+                Vec3 head = flight.points.getLast();
+                fx.billboard(head, 0.28 * scale, CrossbowRageFx.BURST, 0.25, 0, 0, fxHitB, fxHitA, 0.9);
+            }
+        }
+
+        if (fxTrails.get()) {
+            for (int i = trails.size() - 1; i >= 0; i--) {
+                FxTrail trail = trails.get(i);
+                double age = now - trail.time;
+
+                if (age > 2.5) {
+                    trails.remove(i);
+                    continue;
+                }
+
+                if (fxColorMode.get() == FxColorMode.Chance) {
+                    fxColors(trail.hit ? 1 : 0.05, now, fxHitA, fxHitB);
+                } else {
+                    fxHitA.set(fxA);
+                    fxHitB.set(fxB);
+                }
+
+                fx.ribbon(trail.points, 0.05 * scale, 1 - age / 2.5, false, fxHitA, fxHitB, 1);
+            }
+        }
+
+        // Bursts also go away by themselves when the shader is off
+        for (int i = markers.size() - 1; i >= 0; i--) {
+            FxMarker marker = markers.get(i);
+            double age = now - marker.time;
+
+            if (age > 1.0) {
+                markers.remove(i);
+                continue;
+            }
+
+            if (!fxBursts.get()) continue;
+
+            if (fxColorMode.get() == FxColorMode.Chance) {
+                fxColors(marker.hit ? 1 : 0.05, now, fxHitA, fxHitB);
+            } else {
+                fxHitA.set(fxA);
+                fxHitB.set(fxB);
+            }
+
+            double size = (marker.hit ? 2.6 : 1.4) * scale;
+            fx.billboard(marker.at, size, CrossbowRageFx.BURST, age, marker.hit ? 1 : 0, 0, fxHitA, fxHitB, 1);
+        }
+
+        fx.render(event.matrices, !fxThroughWalls.get());
     }
 
     /** A ring made of dashes, in the plane of u and v (unit vectors) round the centre. */
@@ -2450,11 +2852,11 @@ public class CrossbowRagebot extends Module {
 
     /** The arrows that are on their way, with a bright head. */
     private void drawFlights(Renderer3D r, double now) {
-        for (Track track : tracks.values()) {
-            List<Vec3> points = track.arrow;
+        for (FxFlight flight : flights.values()) {
+            List<Vec3> points = flight.points;
             if (points.size() < 2) continue;
 
-            chanceColor(track.shot.solution.hitChance, 210, fx1);
+            chanceColor(flight.chance, 210, fx1);
 
             for (int i = 1; i < points.size(); i++) {
                 Vec3 a = points.get(i - 1), b = points.get(i);
@@ -2525,22 +2927,89 @@ public class CrossbowRagebot extends Module {
     }
 
     /** Called when an arrow is done: keeps its path and puts a flash where it ended. */
+    /** The path of one of our arrows or rockets that is in the air, for the effects. */
+    private static final class FxFlight {
+        final List<Vec3> points = new ArrayList<>();
+        double chance;
+        boolean firework;
+    }
+
+    private final Map<Integer, FxFlight> flights = new HashMap<>();
+    /** Arrows that were found to have hit, by id. */
+    private final Set<Integer> hitIds = new HashSet<>();
+    private double lastShotChance = 0.5;
+
+    /** Follows every projectile of ours that flies, also those no shot was matched to, and keeps the path when it is gone. */
+    private void updateFlights() {
+        if (mc.level == null || mc.player == null) return;
+
+        Set<Integer> present = new HashSet<>();
+        double now = fxNow();
+
+        for (Entity entity : mc.level.entitiesForRendering()) {
+            if (!(entity instanceof Projectile projectile) || !(projectile instanceof AbstractArrow || projectile instanceof FireworkRocketEntity)) continue;
+            if (projectile.getOwner() != mc.player) continue;
+
+            // An arrow that sticks in a block does not move
+            if (projectile.getDeltaMovement().lengthSqr() < 0.01) continue;
+
+            present.add(projectile.getId());
+            FxFlight flight = flights.get(projectile.getId());
+
+            if (flight == null) {
+                flight = new FxFlight();
+                Track track = tracks.get(projectile.getId());
+                flight.chance = track != null ? track.shot.solution.hitChance : lastShotChance;
+                flight.firework = projectile instanceof FireworkRocketEntity;
+                flights.put(projectile.getId(), flight);
+            }
+
+            Vec3 position = projectile.position();
+            if (flight.points.isEmpty() || flight.points.getLast().distanceToSqr(position) > 1e-4) flight.points.add(position);
+        }
+
+        // Gone (it hit something or stuck): the path stays for a moment
+        for (var iterator = flights.entrySet().iterator(); iterator.hasNext(); ) {
+            var entry = iterator.next();
+            if (present.contains(entry.getKey())) continue;
+
+            FxFlight flight = entry.getValue();
+            iterator.remove();
+
+            if (flight.points.size() >= 2) {
+                trails.add(new FxTrail(flight.points, now, hitIds.remove(entry.getKey())));
+                while (trails.size() > 80) trails.removeFirst();
+            } else {
+                hitIds.remove(entry.getKey());
+            }
+        }
+    }
+
     private void addFx(Track track, String verdict, Vec3 arrowEnd, Vec3 targetThen) {
         if (track.arrow.size() < 2) return;
 
         boolean hit = verdict.startsWith("HIT");
         double now = fxNow();
 
-        if (shotTrails.get()) {
-            trails.add(new FxTrail(new ArrayList<>(track.arrow), now, hit));
-            while (trails.size() > 40) trails.removeFirst();
-        }
+        if (hit && track.arrowId >= 0) hitIds.add(track.arrowId);
 
-        if (hitMarkers.get()) {
+        {
             Vec3 at = hit && targetThen != null ? targetThen : arrowEnd != null ? arrowEnd : track.arrow.getLast();
             markers.add(new FxMarker(at, now, hit));
             while (markers.size() > 40) markers.removeFirst();
         }
+    }
+
+    /**
+     * The turn the use packet has to carry, when this module has an aim for the crossbow that is about to be used, or null.
+     * The packet takes the rotation of the player at the moment it is made, so a click that does not come from this module
+     * (the game for a held key, Bow Spam) would otherwise shoot wherever the player looks.
+     */
+    public float[] aimForUse(Player player, InteractionHand hand) {
+        if (!isActive() || player != mc.player || hand != InteractionHand.MAIN_HAND || solution == null || target == null) return null;
+        if (!firing && !(player.getMainHandItem().getItem() instanceof CrossbowItem && CrossbowItem.isCharged(player.getMainHandItem()))) return null;
+
+        return new float[] {solution.yaw, solution.pitch};
     }
 
     /** The entity that is shot at, or null. */
@@ -2557,7 +3026,7 @@ public class CrossbowRagebot extends Module {
         if (mc.player == null) return Phase.Idle;
         if (sinceShot <= 3 && shotCounter > 0) return Phase.Shooting;
         if (chargeProgress() >= 0) return Phase.Charging;
-        if (target != null && solution != null && solution.hitChance < minHitChance.get() / 100.0) return Phase.Waiting;
+        if (target != null && solution != null && !shotWorthTaking()) return Phase.Waiting;
         if (loadedCount() > 0) return Phase.Loaded;
         return target != null ? Phase.Searching : Phase.Idle;
     }

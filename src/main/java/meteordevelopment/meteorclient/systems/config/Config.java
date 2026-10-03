@@ -6,7 +6,6 @@
 package meteordevelopment.meteorclient.systems.config;
 
 import meteordevelopment.meteorclient.MeteorClient;
-import meteordevelopment.meteorclient.gui.fx.UiFx;
 import meteordevelopment.meteorclient.renderer.Fonts;
 import meteordevelopment.meteorclient.renderer.text.FontFace;
 import meteordevelopment.meteorclient.settings.*;
@@ -65,13 +64,6 @@ public class Config extends System<Config> {
         .defaultValue(0.5)
         .range(0, 10)
         .sliderMax(5)
-        .build()
-    );
-
-    public final Setting<UiFx.Level> uiEffects = sgVisual.add(new EnumSetting.Builder<UiFx.Level>()
-        .name("ui-effects")
-        .description("Animations of the client's screens: windows that fly in, an aurora, sparks, a mouse trail, bursts, rainbow borders and shining headers. Insane is the most.")
-        .defaultValue(UiFx.Level.Insane)
         .build()
     );
 
