@@ -35,6 +35,10 @@ A fork of Meteor Client for Minecraft 26.2 (Fabric) with a language pack system,
 - 四種畫面樣式、可自由排列的文字行、卡拉 OK 逐字填色、封面取色、按鍵控制,以及 `.music` 指令。
 - 可在動態島上顯示,並提供 `{music.title}`、`{music.lyric}` 等 Starscript 變數。
 
+### 字型
+- AMeteor 自己畫的文字(GUI、HUD、動態島、音樂播放器、名牌)預設使用內嵌的**霞鶩文楷**:英文與數字用等寬版,中文用文楷 TC,不需要另外安裝字型。
+- 字型選單仍可換成其他字型;中文與日文仍然由文楷負責。Minecraft 原版的聊天與選單文字不受影響。
+
 ### 其他
 - **鞘翅導航**:自動升空、規劃路線、用煙火加速,並估算煙火與耐久,抵達時可發出 Windows 通知。
 - **長矛光環**、殺戮光環修正、**目標標記**(多種樣式)、**實體列表** HUD(堆疊、排序、醒目標示)。
@@ -70,6 +74,7 @@ A fork of Meteor Client for Minecraft 26.2 (Fabric) with a language pack system,
 - [Cabaletta](https://github.com/cabaletta) 與 [WagYourTail](https://github.com/wagyourtail) 的 [Baritone](https://github.com/cabaletta/baritone)。
 - [Fabric 團隊](https://github.com/FabricMC) 的 [Fabric](https://github.com/FabricMC/fabric-loader)。
 - [LRCLIB](https://lrclib.net) 提供歌詞資料。
+- [LXGW WenKai(霞鶩文楷)](https://github.com/lxgw/LxgwWenKaiTC)(SIL OFL 1.1):內嵌的介面字型,英文用等寬版 LXGW WenKai Mono TC,中文用 LXGW WenKai TC。授權全文在 `src/main/resources/assets/meteor-client/fonts/OFL-LXGWWenKai.txt`。
 
 ## 授權
 

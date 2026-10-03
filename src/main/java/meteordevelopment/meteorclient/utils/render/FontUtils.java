@@ -130,7 +130,15 @@ public final class FontUtils {
     }
 
     public static void loadBuiltin(List<FontFamily> fontList, String builtin) {
-        FontInfo fontInfo = FontUtils.getBuiltinFontInfo(builtin);
+        loadBuiltin(fontList, builtin, null);
+    }
+
+    /**
+     * @param knownInfo what the font is called, when it is already known. Reading a big font just to find that out
+     *                  takes time, and the embedded Chinese fonts are 15 MB each.
+     */
+    public static void loadBuiltin(List<FontFamily> fontList, String builtin, @Nullable FontInfo knownInfo) {
+        FontInfo fontInfo = knownInfo != null ? knownInfo : FontUtils.getBuiltinFontInfo(builtin);
         if (fontInfo == null) return;
 
         FontFace fontFace = new BuiltinFontFace(fontInfo, builtin);

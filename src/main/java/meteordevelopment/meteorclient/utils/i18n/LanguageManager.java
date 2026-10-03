@@ -13,6 +13,7 @@ import com.google.gson.JsonParser;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.commands.Command;
 import meteordevelopment.meteorclient.commands.Commands;
+import meteordevelopment.meteorclient.renderer.Fonts;
 import meteordevelopment.meteorclient.gui.tabs.Tab;
 import meteordevelopment.meteorclient.gui.tabs.Tabs;
 import meteordevelopment.meteorclient.settings.Setting;
@@ -58,7 +59,7 @@ public final class LanguageManager {
     public static final String ENGLISH = "en_us";
     public static final int FORMAT = 1;
 
-    public record LanguagePack(String code, String name, String author, Map<String, String> strings, boolean builtIn, boolean wideGlyphs) {
+    public record LanguagePack(String code, String name, String author, Map<String, String> strings, boolean builtIn) {
     }
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
@@ -70,12 +71,14 @@ public final class LanguageManager {
     /** Texts asked for while running, with their English. Catches texts of addons. */
     private static final Map<String, String> SEEN = new ConcurrentHashMap<>();
 
-    private static final LanguagePack ENGLISH_PACK = new LanguagePack(ENGLISH, "English", "Meteor Development", Map.of(), true, false);
+    private static final LanguagePack ENGLISH_PACK = new LanguagePack(ENGLISH, "English", "Meteor Development", Map.of(), true);
 
     private static String selected = AUTO;
     private static volatile LanguagePack active = ENGLISH_PACK;
     private static long lastLocaleCheck;
     private static boolean loaded;
+    /** Whether the active language has characters that the custom fonts cannot draw. */
+    private static volatile boolean needsVanillaFont;
 
     private LanguageManager() {
     }
@@ -191,10 +194,10 @@ public final class LanguageManager {
     }
 
     /**
-     * Whether the language needs glyphs that the bundled fonts do not have (Chinese, Japanese, Korean, Cyrillic...).
-     * The vanilla font is used then. The name is kept for the code that already calls it.
+     * Whether the active language has characters that the custom fonts (LXGW WenKai, or the font the player picked
+     * with it as the fallback) cannot draw, for example Korean. The vanilla font is used then.
      */
-    public static boolean isChinese() {
+    public static boolean needsVanillaFont() {
         if (MeteorClient.mc == null) return false;
 
         // Auto follows the Minecraft language, checked at most once per second since this is called while rendering
@@ -207,7 +210,21 @@ public final class LanguageManager {
             }
         }
 
-        return active.wideGlyphs;
+        return needsVanillaFont;
+    }
+
+    /** Checks the active language against the custom fonts again, for example after the font was changed. */
+    public static void refreshFontSupport() {
+        boolean missing = false;
+
+        for (String value : active.strings.values()) {
+            if (!Fonts.canRender(value)) {
+                missing = true;
+                break;
+            }
+        }
+
+        needsVanillaFont = missing;
     }
 
     // Loading
@@ -221,6 +238,7 @@ public final class LanguageManager {
 
         loadPacks();
         active = resolve();
+        refreshFontSupport();
         refreshEverything();
     }
 
@@ -277,35 +295,23 @@ public final class LanguageManager {
         JsonObject meta = object.has("_meta") && object.get("_meta").isJsonObject() ? object.getAsJsonObject("_meta") : new JsonObject();
 
         Map<String, String> map = new LinkedHashMap<>();
-        boolean wide = false;
 
         for (Map.Entry<String, JsonElement> entry : strings.entrySet()) {
             if (entry.getKey().startsWith("_") || !entry.getValue().isJsonPrimitive()) continue;
 
             String value = entry.getValue().getAsString();
             map.put(entry.getKey(), value);
-            if (!wide) wide = needsWideFont(value);
         }
 
         String code = text(meta, "code", fallbackCode).toLowerCase(Locale.ROOT).replace('-', '_');
         String name = text(meta, "name", code);
         String author = text(meta, "author", "");
 
-        return new LanguagePack(code, name, author, Collections.unmodifiableMap(map), builtIn, wide);
+        return new LanguagePack(code, name, author, Collections.unmodifiableMap(map), builtIn);
     }
 
     private static String text(JsonObject o, String key, String fallback) {
         return o.has(key) && o.get(key).isJsonPrimitive() && !o.get(key).getAsString().isBlank() ? o.get(key).getAsString().strip() : fallback;
-    }
-
-    private static boolean needsWideFont(String value) {
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            // Past Latin Extended, but not punctuation like dashes and quotes that the fonts have
-            if (c > 0x024F && !(c >= 0x2000 && c <= 0x206F)) return true;
-        }
-
-        return false;
     }
 
     private static String fileCode(File file) {

@@ -13,7 +13,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 public interface TextRenderer {
     static TextRenderer get() {
-        return !LanguageManager.isChinese() && Config.get().customFont.get() ? Fonts.RENDERER : VanillaTextRenderer.INSTANCE;
+        return !LanguageManager.needsVanillaFont() && Config.get().customFont.get() ? Fonts.RENDERER : VanillaTextRenderer.INSTANCE;
     }
 
     void setAlpha(double a);

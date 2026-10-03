@@ -15,6 +15,7 @@ import meteordevelopment.meteorclient.events.meteor.CustomFontChangedEvent;
 import meteordevelopment.meteorclient.renderer.*;
 import meteordevelopment.meteorclient.renderer.text.CustomTextRenderer;
 import meteordevelopment.meteorclient.renderer.text.Font;
+import meteordevelopment.meteorclient.renderer.text.TextBatch;
 import meteordevelopment.meteorclient.renderer.text.VanillaTextRenderer;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.render.RenderUtils;
@@ -28,8 +29,6 @@ import net.minecraft.world.item.ItemStack;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -87,12 +86,7 @@ public class HudRenderer {
                 FontHolder fontHolder = it.next();
 
                 if (fontHolder.visited) {
-                    MeshRenderer.begin()
-                        .attachments(mc.gameRenderer.mainRenderTarget())
-                        .pipeline(MeteorRenderPipelines.UI_TEXT)
-                        .mesh(fontHolder.getMesh())
-                        .sampler("u_Texture", fontHolder.font.texture.getTextureView(), fontHolder.font.texture.getSampler())
-                        .end();
+                    fontHolder.batch.flush();
                 } else {
                     it.remove();
                     fontCache.put(fontHolder.font.getHeight(), fontHolder);
@@ -147,7 +141,7 @@ public class HudRenderer {
         FontHolder fontHolder = getFontHolder(scale, true);
 
         Font font = fontHolder.font;
-        MeshBuilder mesh = fontHolder.getMesh();
+        TextBatch batch = fontHolder.batch;
 
         double width;
 
@@ -155,12 +149,12 @@ public class HudRenderer {
             int preShadowA = CustomTextRenderer.SHADOW_COLOR.a;
             CustomTextRenderer.SHADOW_COLOR.a = (int) (color.a / 255.0 * preShadowA);
 
-            width = font.render(mesh, text, x + 1, y + 1, CustomTextRenderer.SHADOW_COLOR, scale);
-            font.render(mesh, text, x, y, color, scale);
+            width = font.render(batch, text, x + 1, y + 1, CustomTextRenderer.SHADOW_COLOR, scale);
+            font.render(batch, text, x, y, color, scale);
 
             CustomTextRenderer.SHADOW_COLOR.a = preShadowA;
         } else {
-            width = font.render(mesh, text, x, y, color, scale);
+            width = font.render(batch, text, x, y, color, scale);
         }
 
         return width;
@@ -304,32 +298,22 @@ public class HudRenderer {
     }
 
     private static FontHolder loadFont(int height) {
-        try {
-            ByteBuffer buffer = Fonts.RENDERER.fontFace.readToDirectByteBuffer();
-            return new FontHolder(new Font(buffer, height));
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load font: " + Fonts.RENDERER.fontFace, e);
-        }
+        // The font files are shared, a font only makes the glyphs of its height
+        return new FontHolder(new Font(Fonts.RENDERER.getFontSet(), height));
     }
 
     private static class FontHolder {
         public final Font font;
+        public final TextBatch batch = new TextBatch();
         public boolean visited;
-
-        private MeshBuilder mesh;
 
         public FontHolder(Font font) {
             this.font = font;
         }
 
-        public MeshBuilder getMesh() {
-            if (mesh == null) mesh = new MeshBuilder(MeteorRenderPipelines.UI_TEXT);
-            if (!mesh.isBuilding()) mesh.begin();
-            return mesh;
-        }
-
         public void destroy() {
-            font.texture.close();
+            batch.clear();
+            font.destroy();
         }
     }
 }

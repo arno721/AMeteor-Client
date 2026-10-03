@@ -26,8 +26,6 @@ import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.render.NametagUtils;
 import meteordevelopment.meteorclient.utils.render.RenderUtils;
 import meteordevelopment.meteorclient.utils.render.color.Color;
-import meteordevelopment.meteorclient.utils.i18n.LanguageManager;
-import meteordevelopment.meteorclient.renderer.text.VanillaTextRenderer;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -408,7 +406,7 @@ public class Nametags extends Module {
     }
 
     private void renderNametagPlayer(Render2DEvent event, Player player, boolean shadow) {
-        TextRenderer text = LanguageManager.isChinese() ? VanillaTextRenderer.INSTANCE : TextRenderer.get();
+        TextRenderer text = TextRenderer.get();
         NametagUtils.begin(pos, event.graphics);
 
         // Gamemode
@@ -606,7 +604,7 @@ public class Nametags extends Module {
     private void renderNametagItem(GuiGraphicsExtractor graphics, ItemStack stack, boolean shadow) {
         if (stack.isEmpty()) return;
 
-        TextRenderer text = LanguageManager.isChinese() ? VanillaTextRenderer.INSTANCE : TextRenderer.get();
+        TextRenderer text = TextRenderer.get();
         NametagUtils.begin(pos, graphics);
 
         String name = Names.get(stack);
@@ -634,7 +632,7 @@ public class Nametags extends Module {
     }
 
     private void renderGenericLivingNametag(GuiGraphicsExtractor graphics, LivingEntity entity, boolean shadow) {
-        TextRenderer text = LanguageManager.isChinese() ? VanillaTextRenderer.INSTANCE : TextRenderer.get();
+        TextRenderer text = TextRenderer.get();
         NametagUtils.begin(pos, graphics);
 
         //Name
@@ -674,7 +672,7 @@ public class Nametags extends Module {
     }
 
     private void renderGenericNametag(GuiGraphicsExtractor graphics, Entity entity, boolean shadow) {
-        TextRenderer text = LanguageManager.isChinese() ? VanillaTextRenderer.INSTANCE : TextRenderer.get();
+        TextRenderer text = TextRenderer.get();
         NametagUtils.begin(pos, graphics);
 
         //Name
@@ -697,7 +695,7 @@ public class Nametags extends Module {
     }
 
     private void renderTntNametag(GuiGraphicsExtractor graphics, String fuseText, boolean shadow) {
-        TextRenderer text = LanguageManager.isChinese() ? VanillaTextRenderer.INSTANCE : TextRenderer.get();
+        TextRenderer text = TextRenderer.get();
         NametagUtils.begin(pos, graphics);
 
         double width = text.getWidth(fuseText, shadow);

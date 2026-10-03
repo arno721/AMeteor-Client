@@ -261,8 +261,8 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
     }
 
     public boolean hasCustomFont() {
-        // The bundled fonts have no Chinese glyphs, so fall back to the vanilla font while a Chinese language is active.
-        return customFont.get() && !LanguageManager.isChinese();
+        // Only languages with characters that the embedded fonts do not have use the vanilla font.
+        return customFont.get() && !LanguageManager.needsVanillaFont();
     }
 
     public double getTextScale() {

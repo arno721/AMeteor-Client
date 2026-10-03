@@ -27,6 +27,7 @@ import meteordevelopment.meteorclient.utils.PreInit;
 import meteordevelopment.meteorclient.utils.ReflectInit;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.misc.Version;
+import meteordevelopment.meteorclient.renderer.Fonts;
 import meteordevelopment.meteorclient.utils.i18n.LanguageManager;
 import meteordevelopment.meteorclient.utils.misc.input.KeyAction;
 import meteordevelopment.meteorclient.utils.misc.input.KeyBinds;
@@ -143,6 +144,9 @@ public class MeteorClient implements ClientModInitializer {
         String language = LanguageManager.normalizeSelection(Config.get().language.get());
         if (!language.equals(Config.get().language.get())) Config.get().language.set(language);
         LanguageManager.setLanguage(language);
+
+        // The default font changed from Comfortaa to LXGW WenKai
+        Fonts.migrateDefaultFont();
 
         // Post init
         ReflectInit.init(PostInit.class);
