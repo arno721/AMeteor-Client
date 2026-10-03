@@ -4425,6 +4425,8 @@
     "module.crossbow-ragebot.setting.compensate-own-motion.description": "Adds your own movement to the arrow. Off by default: measured arrows do not inherit it, turn on only if your server does.",
     "module.crossbow-ragebot.setting.predict-own-step.name": "Predict Own Step",
     "module.crossbow-ragebot.setting.predict-own-step.description": "The arrow is made where you are after this tick's step. Aims from there, which matters a lot when you move fast.",
+    "module.crossbow-ragebot.setting.high-arc.name": "High Arc",
+    "module.crossbow-ragebot.setting.high-arc.description": "When the straight shot is blocked by a block, tries a plunging shot: nearly straight up, coming down on the target about five seconds later. Only for targets that stand still.",
     "module.crossbow-ragebot.setting.max-flight-ticks.name": "Max Flight Ticks",
     "module.crossbow-ragebot.setting.max-flight-ticks.description": "Does not shoot when the arrow needs longer than this to arrive.",
     "module.crossbow-ragebot.setting.accuracy.name": "Accuracy",

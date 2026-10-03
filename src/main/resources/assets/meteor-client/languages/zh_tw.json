@@ -4425,6 +4425,8 @@
     "module.crossbow-ragebot.setting.compensate-own-motion.description": "把你自己的移動加到箭上。預設關閉:實測箭不會繼承你的速度,只有你的伺服器會才需要開。",
     "module.crossbow-ragebot.setting.predict-own-step.name": "預測自身步伐",
     "module.crossbow-ragebot.setting.predict-own-step.description": "箭是在你走完這一 tick 之後的位置生成的,從那個位置開始瞄準。你快速移動時差很多。",
+    "module.crossbow-ragebot.setting.high-arc.name": "高拋彈道",
+    "module.crossbow-ragebot.setting.high-arc.description": "直射被方塊擋住時,改試近乎垂直向上的俯衝射擊,約五秒後從上方落在目標身上。只對站著不動的目標有效。",
     "module.crossbow-ragebot.setting.max-flight-ticks.name": "最大飛行遊戲刻",
     "module.crossbow-ragebot.setting.max-flight-ticks.description": "箭飛行時間超過這個值就不射擊。",
     "module.crossbow-ragebot.setting.accuracy.name": "精準度",

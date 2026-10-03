@@ -368,6 +368,13 @@ public class CrossbowRagebot extends Module {
         .build()
     );
 
+    private final Setting<Boolean> highArc = sgBallistics.add(new BoolSetting.Builder()
+        .name("high-arc")
+        .description("When the straight shot is blocked by a block, tries a high lob that goes over it. The flight is longer, so a moving target is harder to hit and the hit chance is lower.")
+        .defaultValue(true)
+        .build()
+    );
+
     private final Setting<Integer> maxFlightTicks = sgBallistics.add(new IntSetting.Builder()
         .name("max-flight-ticks")
         .description("Does not shoot when the arrow needs longer than this to arrive.")
@@ -488,6 +495,12 @@ public class CrossbowRagebot extends Module {
     private int holdUntil = -1;
     /** How many valid targets there are in range right now. */
     private int candidateCount;
+    private int lobBudget;
+    private static final int LOBS_PER_TICK = 6;
+    /** A lob goes nearly straight up and comes down about five seconds later. */
+    private static final int LOB_MAX_TICKS = 160;
+    /** Horizontal speed (blocks per tick) up to which a target counts as standing still, the lob is for those only. */
+    private static final double LOB_MAX_TARGET_SPEED = 0.03;
     private final List<Shot> pendingShots = new ArrayList<>();
     private final java.util.Set<Integer> knownArrows = new java.util.HashSet<>();
     private final java.util.Set<Integer> otherArrows = new java.util.HashSet<>();
@@ -945,6 +958,7 @@ public class CrossbowRagebot extends Module {
     private void chooseTarget(double speed) {
         skipReasons.setLength(0);
         candidateCount = 0;
+        lobBudget = LOBS_PER_TICK;
 
         List<Entity> candidates = new ArrayList<>();
         boolean switching = targetMode.get() == TargetMode.Switch;
@@ -974,7 +988,20 @@ public class CrossbowRagebot extends Module {
         Solution best = null;
 
         for (Entity candidate : candidates) {
-            Solution solved = solve(candidate, speed);
+            Solution solved = solve(candidate, speed, false);
+
+            // The direct shot is blocked or has no solution: try the high lob (only a few per tick, it costs more)
+            if (highArc.get() && lobBudget > 0 && (solved == null || solved.impact.blocked)) {
+                lobBudget--;
+                String directFailure = solveFailure;
+                Solution lob = solve(candidate, speed, true);
+
+                if (lob != null && !lob.impact.blocked) {
+                    solved = lob;
+                } else {
+                    solveFailure = directFailure;
+                }
+            }
 
             if (solved == null) {
                 skipReasons.append(describe(candidate)).append(": ").append(solveFailure).append("; ");
@@ -1110,8 +1137,64 @@ public class CrossbowRagebot extends Module {
         return current + Mth.wrapDegrees((float) -Math.toDegrees(Math.atan2(to.y - from.y, horizontal)) - current);
     }
 
-    private Solution solve(Entity entity, double speed) {
+    /**
+     * The pitch that makes an arrow land at the given height after the given horizontal distance. There are two: the flat
+     * one and the lob. Null when there is none (out of reach) or when both are the same.
+     */
+    private Float pitchFor(Vec3 start, float yaw, double horizontal, double targetY, double speed, Vec3 own, boolean lob, int limit) {
+        double previousPitch = 0, previousError = 0;
+        boolean hasPrevious = false;
+        double flat = Double.NaN, high = Double.NaN;
+
+        // From looking down to looking up: the height at that distance goes up to the best angle and then down again
+        for (double pitch = 85; pitch >= -89; pitch -= 2) {
+            Impact impact = simulate(start, Vec3.directionFromRotation((float) pitch, yaw).scale(speed).add(own), horizontal, limit, false);
+
+            if (impact == null) {
+                hasPrevious = false;
+                continue;
+            }
+
+            double error = impact.point.y - targetY;
+
+            if (hasPrevious && (previousError < 0) != (error < 0)) {
+                double root = refinePitch(start, yaw, horizontal, targetY, speed, own, previousPitch, pitch, limit);
+
+                if (Double.isNaN(flat)) flat = root;
+                high = root;
+            }
+
+            previousPitch = pitch;
+            previousError = error;
+            hasPrevious = true;
+        }
+
+        if (!lob) return Double.isNaN(flat) ? null : (float) flat;
+        if (Double.isNaN(high) || Double.isNaN(flat) || flat - high < 3) return null;
+
+        return (float) high;
+    }
+
+    private double refinePitch(Vec3 start, float yaw, double horizontal, double targetY, double speed, Vec3 own, double a, double b, int limit) {
+        Impact first = simulate(start, Vec3.directionFromRotation((float) a, yaw).scale(speed).add(own), horizontal, limit, false);
+        boolean firstBelow = first != null && first.point.y < targetY;
+
+        for (int i = 0; i < 24; i++) {
+            double middle = (a + b) / 2;
+            Impact impact = simulate(start, Vec3.directionFromRotation((float) middle, yaw).scale(speed).add(own), horizontal, limit, false);
+
+            if (impact == null) break;
+
+            if ((impact.point.y < targetY) == firstBelow) a = middle;
+            else b = middle;
+        }
+
+        return (a + b) / 2;
+    }
+
+    private Solution solve(Entity entity, double speed, boolean lob) {
         solveFailure = "";
+        int limit = lob ? LOB_MAX_TICKS : maxFlightTicks.get();
 
         // The server makes the arrow where the player is after this tick's step, which is not yet done at this point of the
         // tick: the position is where the player was after the last step. Measured: the arrow starts one step further.
@@ -1126,6 +1209,12 @@ public class CrossbowRagebot extends Module {
         }
 
         Vec3 velocity = velocityOf(entity);
+
+        if (lob && Math.hypot(velocity.x, velocity.z) > LOB_MAX_TARGET_SPEED) {
+            solveFailure = "the lob takes about five seconds, the target moves";
+            return null;
+        }
+
         Vec3 base = basePoint(entity);
         double ground = groundLevel(entity, base);
 
@@ -1158,15 +1247,34 @@ public class CrossbowRagebot extends Module {
             yaw = aimYaw(start, aimAt);
             pitch = Mth.clamp(aimPitch(start, aimAt), -90, 90);
 
+            if (lob) {
+                Float lobPitch = pitchFor(start, yaw, horizontal, point.y, speed, own, true, limit);
+
+                if (lobPitch == null) {
+                    solveFailure = "there is no high lob that reaches %.1f blocks far".formatted(horizontal);
+                    return null;
+                }
+
+                pitch = lobPitch;
+            }
+
             Vec3 initial = Vec3.directionFromRotation(pitch, yaw).scale(speed).add(own);
-            impact = simulate(start, initial, horizontal, maxFlightTicks.get(), false);
+            impact = simulate(start, initial, horizontal, limit, false);
 
             if (impact == null) {
-                solveFailure = "the arrow does not get %.1f blocks far within %d ticks (too far, or aimed too steep)".formatted(horizontal, maxFlightTicks.get());
+                solveFailure = "the arrow does not get %.1f blocks far within %d ticks (too far, or aimed too steep)".formatted(horizontal, limit);
                 return null;
             }
 
+            double previousTicks = ticks;
             ticks = impact.ticks;
+
+            if (lob) {
+                // The pitch is exact for the point, only the point moves with the flight time
+                if (Math.abs(previousTicks - ticks) < 0.02) break;
+                continue;
+            }
+
             Vec3 miss = point.subtract(impact.point);
 
             if (miss.length() < 0.05) break;
@@ -1174,13 +1282,28 @@ public class CrossbowRagebot extends Module {
             aimAt = aimAt.add(miss);
         }
 
+        if (lob) {
+            // The last pass had the point of the last flight time
+            point = predicted(entity, base, velocity, latency + ticks, ground);
+            double horizontalNow = Math.hypot(point.x - start.x, point.z - start.z);
+            Float lobPitch = pitchFor(start, yaw, horizontalNow, point.y, speed, own, true, limit);
+
+            if (lobPitch == null) {
+                solveFailure = "there is no high lob that reaches %.1f blocks far".formatted(horizontalNow);
+                return null;
+            }
+
+            pitch = lobPitch;
+            aimAt = point;
+        }
+
         // One more time with the blocks, to know if the arrow gets there
         Vec3 initial = Vec3.directionFromRotation(pitch, yaw).scale(speed).add(own);
         double horizontal = Math.hypot(point.x - start.x, point.z - start.z);
-        impact = simulate(start, initial, horizontal, maxFlightTicks.get(), true);
+        impact = simulate(start, initial, horizontal, limit, true);
 
         if (impact == null) {
-            solveFailure = "the arrow does not reach the target within %d ticks".formatted(maxFlightTicks.get());
+            solveFailure = "the arrow does not reach the target within %d ticks".formatted(limit);
             return null;
         }
 
@@ -1196,7 +1319,7 @@ public class CrossbowRagebot extends Module {
 
         double lead = latency + impact.ticks;
         double margin = predictionMargin(entity, velocity, lead);
-        double chance = hitChance(start, own, yaw, pitch, speed, horizontal, box, margin);
+        double chance = hitChance(start, own, yaw, pitch, speed, horizontal, box, margin, limit);
 
         Detail detail = new Detail(base, aimAt, point, start, own, initial, iterations, residual, pingTicks, offsetTicks, calibrationTicks, margin, speed, horizontal, ground);
 
@@ -1252,14 +1375,14 @@ public class CrossbowRagebot extends Module {
      * often it lands inside the hitbox (made bigger by the size of the arrow). The hitbox is also moved by a random part
      * of the margin, how far off the prediction can be, so a target that is hard to predict has a lower chance.
      */
-    private double hitChance(Vec3 start, Vec3 own, float yaw, float pitch, double speed, double horizontal, AABB box, double margin) {
+    private double hitChance(Vec3 start, Vec3 own, float yaw, float pitch, double speed, double horizontal, AABB box, double margin, int limit) {
         Vec3 direction = Vec3.directionFromRotation(pitch, yaw);
         AABB target = box.inflate(0.3, 0.25, 0.3);
         int hits = 0;
 
         for (double[] spread : SPREAD) {
             Vec3 initial = direction.add(spread[0], spread[1], spread[2]).scale(speed).add(own);
-            Impact impact = simulate(start, initial, horizontal, maxFlightTicks.get(), false);
+            Impact impact = simulate(start, initial, horizontal, limit, false);
 
             if (impact == null) continue;
 
