@@ -211,6 +211,23 @@ public class CrossbowRagebot extends Module {
         .build()
     );
 
+    private final Setting<Boolean> playersFirst = sgTargeting.add(new BoolSetting.Builder()
+        .name("players-first")
+        .description("Players are shot at before any other kind of target. The others only get a turn when no player can be hit.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Integer> switchLimit = sgTargeting.add(new IntSetting.Builder()
+        .name("switch-limit")
+        .description("The most targets the switch mode goes round.")
+        .defaultValue(1024)
+        .range(2, 100000)
+        .sliderRange(16, 2048)
+        .visible(() -> targetMode.get() == TargetMode.Switch)
+        .build()
+    );
+
     private final Setting<SortPriority> priority = sgTargeting.add(new EnumSetting.Builder<SortPriority>()
         .name("priority")
         .description("How the target is chosen.")
@@ -931,7 +948,7 @@ public class CrossbowRagebot extends Module {
 
         List<Entity> candidates = new ArrayList<>();
         boolean switching = targetMode.get() == TargetMode.Switch;
-        TargetUtils.getList(candidates, this::valid, priority.get(), switching ? 64 : 5);
+        TargetUtils.getList(candidates, this::valid, priority.get(), switching ? switchLimit.get() : 5);
         candidateCount = candidates.size();
 
         if (switching) {
@@ -943,6 +960,9 @@ public class CrossbowRagebot extends Module {
 
             if (first > 0 && first < candidates.size()) java.util.Collections.rotate(candidates, -first);
         }
+
+        // Players before the rest, each group keeps its order (a stable sort)
+        if (playersFirst.get()) candidates.sort(java.util.Comparator.comparingInt(e -> e instanceof Player ? 0 : 1));
 
         if (candidates.isEmpty()) {
             skipReasons.append("no entity of the chosen kinds in range, in view and not a friend");
