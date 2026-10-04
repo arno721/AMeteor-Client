@@ -34,6 +34,8 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 public final class ElytraPick {
     private static boolean picking, baritoneFlying;
     private static int graceTicks, baritoneTicks, takeOffTimer;
+    /** The player has been in the air since Baritone got the flight. */
+    private static boolean flownYet;
     /** The speed override of the navigator is turned off while Baritone flies, and turned on again after. */
     private static boolean overrideSuspended, overrideWasOn;
     private static BlockPos destination;
@@ -115,9 +117,13 @@ public final class ElytraPick {
         if (baritoneFlying) {
             baritoneTicks++;
 
-            // Baritone only flies once you are in the air (unless its elytraAutoJump is on and there is a ledge), so the take off is done here
+            // Baritone only flies once you are in the air (unless its elytraAutoJump is on and there is a ledge), so the take off is
+            // done here, but only to get into the air: once the flight has begun, the landing is Baritone's, jumping again there
+            // is what makes the landing unsteady
             ElytraNavigator navigator = navigator();
-            if (navigator != null && navigator.baritoneTakeOff() && !mc.player.isFallFlying()) takeOff();
+
+            if (mc.player.isFallFlying()) flownYet = true;
+            else if (!flownYet && baritoneTicks < 200 && navigator != null && navigator.baritoneTakeOff()) takeOff();
         }
 
         if (baritoneFlying && graceTicks == 0 && BaritoneUtils.IS_AVAILABLE && !BaritoneElytra.isActive()) {
@@ -216,6 +222,7 @@ public final class ElytraPick {
                 suspendOverride(navigator);
                 graceTicks = 60;
                 baritoneTicks = 0;
+                flownYet = mc.player.isFallFlying();
                 destination = pos;
                 navigator.info("Flying to %d, %d, %d with Baritone.", pos.getX(), pos.getY(), pos.getZ());
                 return;
