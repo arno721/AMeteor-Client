@@ -4508,6 +4508,8 @@
     "module.crossbow-ragebot.setting.attack-babies.description": "是否射擊幼年的生物。",
     "module.crossbow-ragebot.setting.attack-neutral.name": "攻擊中立生物",
     "module.crossbow-ragebot.setting.attack-neutral.description": "是否射擊中立生物。",
+    "module.crossbow-ragebot.setting.skip-closed-shulkers.name": "跳過閉合的界伏蚌",
+    "module.crossbow-ragebot.setting.skip-closed-shulkers.description": "界伏蚌的殼是閉合時不攻擊它,因為這時它不會受到傷害。",
     "module.crossbow-ragebot.setting.ignore-invisible.name": "忽略隱形實體",
     "module.crossbow-ragebot.setting.ignore-invisible.description": "不射擊隱形的實體。",
     "module.crossbow-ragebot.setting.predict-movement.name": "預判移動",

@@ -4508,6 +4508,8 @@
     "module.crossbow-ragebot.setting.attack-babies.description": "Whether to shoot baby variants of entities.",
     "module.crossbow-ragebot.setting.attack-neutral.name": "Attack Neutral",
     "module.crossbow-ragebot.setting.attack-neutral.description": "Whether to shoot neutral mobs.",
+    "module.crossbow-ragebot.setting.skip-closed-shulkers.name": "Skip Closed Shulkers",
+    "module.crossbow-ragebot.setting.skip-closed-shulkers.description": "Does not shoot at a shulker while its shell is closed, it takes no damage then.",
     "module.crossbow-ragebot.setting.ignore-invisible.name": "Ignore Invisible",
     "module.crossbow-ragebot.setting.ignore-invisible.description": "Does not shoot at invisible entities.",
     "module.crossbow-ragebot.setting.predict-movement.name": "Predict Movement",

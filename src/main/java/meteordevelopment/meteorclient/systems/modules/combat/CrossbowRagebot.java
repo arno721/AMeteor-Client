@@ -41,6 +41,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.monster.Shulker;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.FireworkRocketEntity;
 import net.minecraft.world.entity.projectile.Projectile;
@@ -348,6 +349,13 @@ public class CrossbowRagebot extends Module {
         .name("attack-neutral")
         .description("Whether to shoot neutral mobs.")
         .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> skipClosedShulkers = sgTargeting.add(new BoolSetting.Builder()
+        .name("skip-closed-shulkers")
+        .description("Does not shoot at a shulker while its shell is closed, it takes no damage then.")
+        .defaultValue(true)
         .build()
     );
 
@@ -1426,6 +1434,7 @@ public class CrossbowRagebot extends Module {
 
         if (entity instanceof AgeableMob ageable && ageable.isBaby() && !attackBabies.get()) return false;
         if (entity instanceof NeutralMob && !attackNeutral.get()) return false;
+        if (skipClosedShulkers.get() && entity instanceof Shulker shulker && shulker.getRawPeekAmount() == 0) return false;
 
         return !(ignoreInvisible.get() && entity.isInvisible());
     }
