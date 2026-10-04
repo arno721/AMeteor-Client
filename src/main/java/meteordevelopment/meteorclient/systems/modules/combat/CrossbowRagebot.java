@@ -22,6 +22,7 @@ import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.entity.EntityUtils;
 import meteordevelopment.meteorclient.utils.entity.SortPriority;
 import meteordevelopment.meteorclient.utils.entity.TargetUtils;
+import meteordevelopment.meteorclient.utils.misc.input.Input;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.player.Rotations;
@@ -82,6 +83,8 @@ public class CrossbowRagebot extends Module {
     /** The speed of an arrow shot with a crossbow, in blocks per tick. */
     private static final double ARROW_SPEED = 3.15;
     private static final double FIREWORK_SPEED = 1.6;
+    /** A rocket that is loaded counts as a hit when it passes this close to the target: its explosion reaches 5 blocks. */
+    private static final double FIREWORK_BLAST = 2.0;
     /** Ticks to wait before a slot is looked at again after it was shot, until the server has unloaded it. */
     private static final int SHOT_LIMBO_TICKS = 5;
 
@@ -103,11 +106,6 @@ public class CrossbowRagebot extends Module {
         }
     }
 
-    public enum Mode {
-        Arrow,
-        Firework
-    }
-
     public enum AimPoint {
         Body,
         Head,
@@ -116,6 +114,7 @@ public class CrossbowRagebot extends Module {
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgTargeting = settings.createGroup("Targeting");
+    private final SettingGroup sgRapid = settings.createGroup("Rapid Fire");
     private final SettingGroup sgBallistics = settings.createGroup("Ballistics");
     private final SettingGroup sgRender = settings.createGroup("Render");
 
@@ -125,23 +124,6 @@ public class CrossbowRagebot extends Module {
         .name("auto-switch")
         .description("Switches between the crossbows in your hotbar: to a loaded one to shoot, to an empty one to load it.")
         .defaultValue(true)
-        .build()
-    );
-
-    private final Setting<Mode> mode = sgGeneral.add(new EnumSetting.Builder<Mode>()
-        .name("mode")
-        .description("Arrow shoots arrows. Firework loads firework rockets into the crossbow: they fly straight and slower, only as far as their flight duration, and there is no rapid fire.")
-        .defaultValue(Mode.Arrow)
-        .build()
-    );
-
-    private final Setting<Double> fireworkBlast = sgBallistics.add(new DoubleSetting.Builder()
-        .name("firework-blast")
-        .description("A firework shot counts as a hit when it passes this close to the target: the explosion hurts everything within 5 blocks, if the rocket has a star.")
-        .defaultValue(2.0)
-        .range(0, 5)
-        .sliderRange(0, 5)
-        .visible(() -> mode.get() == Mode.Firework)
         .build()
     );
 
@@ -169,10 +151,62 @@ public class CrossbowRagebot extends Module {
         .build()
     );
 
-    private final Setting<Boolean> useBowSpam = sgGeneral.add(new BoolSetting.Builder()
-        .name("use-bow-spam")
-        .description("When Bow Spam is on with its crossbow spamming, this module does the shooting at Bow Spam's delay and also takes loaded crossbows from the inventory. Bow Spam itself then waits, because it would shoot wherever you look.")
+    private final Setting<Boolean> rapidFire = sgRapid.add(new BoolSetting.Builder()
+        .name("rapid-fire")
+        .description("Shoots loaded crossbows quickly, the way Bow Spam did: the use key stays down from the start of the charge, loaded crossbows from the inventory are used and the shots do not wait for the crossbow to show as empty.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Integer> rapidDelay = sgRapid.add(new IntSetting.Builder()
+        .name("rapid-delay")
+        .description("The least number of ticks between two shots of the rapid fire.")
+        .defaultValue(1)
+        .range(1, 20)
+        .sliderRange(1, 10)
+        .visible(rapidFire::get)
+        .build()
+    );
+
+    private final Setting<Double> noTargetHold = sgRapid.add(new DoubleSetting.Builder()
+        .name("no-target-hold")
+        .description("When no target is left, the use key stays down for this many seconds before it is let go, so a target that steps out of the range and comes back at once does not interrupt the rapid fire. 0 lets go at once.")
+        .defaultValue(2)
+        .min(0)
+        .sliderRange(0, 10)
+        .visible(rapidFire::get)
+        .build()
+    );
+
+    private final Setting<Boolean> searchInventory = sgRapid.add(new BoolSetting.Builder()
+        .name("search-inventory")
+        .description("Also takes loaded crossbows from the inventory into the hotbar for the rapid fire.")
         .defaultValue(true)
+        .visible(rapidFire::get)
+        .build()
+    );
+
+    private final Setting<Boolean> holdRightClick = sgRapid.add(new BoolSetting.Builder()
+        .name("when-holding-right-click")
+        .description("The rapid fire and the bow spam only work while you hold the right mouse button yourself.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> bowSpam = sgRapid.add(new BoolSetting.Builder()
+        .name("bow-spam")
+        .description("Spams a bow in your hand: charges it for the ticks below and lets go, again and again.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Integer> bowCharge = sgRapid.add(new IntSetting.Builder()
+        .name("bow-charge")
+        .description("How long a bow is charged before it is let go, in ticks.")
+        .defaultValue(5)
+        .range(4, 20)
+        .sliderRange(4, 20)
+        .visible(bowSpam::get)
         .build()
     );
 
@@ -665,6 +699,8 @@ public class CrossbowRagebot extends Module {
     private int holdUntil = -1;
     /** How many valid targets there are in range right now. */
     private int candidateCount;
+    /** The last tick there was a target in range, for the hold without a target. */
+    private int lastTargetTick = -1000;
     private int lobBudget;
     /** The click of this module is being made (see {@link #aimForUse}). */
     private boolean firing;
@@ -721,6 +757,7 @@ public class CrossbowRagebot extends Module {
 
         for (int i = 0; i < shotAt.length; i++) shotAt[i] = -1000;
         releasedAt = -1000;
+        lastTargetTick = -1000;
         lastShotTarget = -1;
         switchCurrent = -1;
         switchFired = false;
@@ -731,6 +768,10 @@ public class CrossbowRagebot extends Module {
         closeLog();
         holdUntil = -1;
         releaseKey();
+        if (bowKeyDown) {
+            mc.options.keyUse.setDown(false);
+            bowKeyDown = false;
+        }
         history.clear();
         target = null;
         solution = null;
@@ -761,13 +802,16 @@ public class CrossbowRagebot extends Module {
             return;
         }
 
+        // A bow in the hand: the bow spam does it, the crossbow logic waits
+        if (bowTick()) return;
+
         trackPositions();
         watchArrows();
         updateFlights();
 
-        BowSpam spam = bowSpam();
+        boolean spam = rapid();
         int[] crossbows = hotbarCrossbows();
-        if (crossbows.length == 0 && !(spam != null && spam.searchesInventory())) {
+        if (crossbows.length == 0 && !(spam && searchInventory.get())) {
             state("nocrossbow", "IDLE", "no usable crossbow in the hotbar (none, or all are nearly broken)");
             releaseKey();
             return;
@@ -777,13 +821,14 @@ public class CrossbowRagebot extends Module {
         int loaded = findSlot(crossbows, held, true);
 
         // The speed depends on what is loaded, firework rockets are slower than arrows
-        fireworkPhysics = loaded >= 0 ? isFireworkLoaded(mc.player.getInventory().getItem(loaded)) : mode.get() == Mode.Firework;
+        fireworkPhysics = loaded >= 0 ? isFireworkLoaded(mc.player.getInventory().getItem(loaded)) : false;
         if (loaded >= 0 && fireworkPhysics) fireworkTicks = fireworkTicksOf(mc.player.getInventory().getItem(loaded));
         double speed = loaded >= 0 ? speedOf(mc.player.getInventory().getItem(loaded)) : fireworkPhysics ? FIREWORK_SPEED : ARROW_SPEED;
         chooseTarget(speed);
 
         // Bow Spam mode: the key stays down for as long as there is something left to shoot at
-        holdUntil = spam != null && candidateCount > 0 ? tickCounter + 1 : -1;
+        if (candidateCount > 0) lastTargetTick = tickCounter;
+        holdUntil = spam && holdWanted() ? tickCounter + 1 : -1;
 
         try {
             logDecision(loaded);
@@ -806,7 +851,7 @@ public class CrossbowRagebot extends Module {
         }
 
         // Out of loaded crossbows in the hotbar: bring a loaded one from the inventory, Bow Spam style
-        if (target != null && solution != null && loaded < 0 && spam != null && spam.searchesInventory()
+        if (target != null && solution != null && loaded < 0 && spam && searchInventory.get()
             && shotWorthTaking() && pullLoadedCrossbow()) {
             Rotations.rotate(solution.yaw, solution.pitch, ROTATION_PRIORITY);
             return;
@@ -833,20 +878,57 @@ public class CrossbowRagebot extends Module {
 
     // Crossbows
 
-    /** Bow Spam, when it is on, spams crossbows and this module is allowed to use it. */
-    private BowSpam bowSpam() {
-        if (!useBowSpam.get() || mode.get() == Mode.Firework) return null;
+    /** Whether the use key is to stay down: there is a target, or the last one left a moment ago. It is never let go in between. */
+    private boolean holdWanted() {
+        if (candidateCount > 0) return true;
 
-        BowSpam spam = Modules.get().get(BowSpam.class);
-        return spam != null && spam.isActive() && spam.spamsCrossbows() ? spam : null;
+        return noTargetHold.get() > 0 && tickCounter - lastTargetTick <= Math.round(noTargetHold.get() * 20);
     }
 
-    /** Whether Bow Spam leaves its crossbows to this module right now. */
-    public boolean takesOverBowSpam() {
-        if (!isActive()) return false;
+    /** Whether the rapid fire is on now: it is set, and the right mouse button is held if that is wanted. */
+    private boolean rapid() {
+        return rapidFire.get() && physicalUseHeld();
+    }
 
-        // In the firework mode there is no rapid fire, but Bow Spam still must not shoot the rockets wherever you look
-        return bowSpam() != null || (mode.get() == Mode.Firework && useBowSpam.get());
+    /** Whether the player holds the use button, not the module. Always true when the setting for it is off. */
+    private boolean physicalUseHeld() {
+        return !holdRightClick.get() || Input.isPressed(mc.options.keyUse);
+    }
+
+    private boolean bowKeyDown;
+
+    /** The bow spam. Returns true when a bow is in the hand, then the crossbow logic leaves it alone. */
+    private boolean bowTick() {
+        boolean bow = mc.player.getMainHandItem().is(Items.BOW) || mc.player.getOffhandItem().is(Items.BOW);
+
+        if (!bowSpam.get() || !bow) {
+            if (bowKeyDown) {
+                mc.options.keyUse.setDown(false);
+                bowKeyDown = false;
+            }
+
+            return false;
+        }
+
+        if (!mc.player.getAbilities().instabuild && !InvUtils.find(stack -> stack.getItem() instanceof ArrowItem).found()) return true;
+
+        if (!physicalUseHeld()) {
+            if (bowKeyDown) {
+                mc.options.keyUse.setDown(false);
+                bowKeyDown = false;
+            }
+
+            return true;
+        }
+
+        if (mc.player.getTicksUsingItem() >= bowCharge.get()) {
+            mc.gameMode.releaseUsingItem(mc.player);
+        } else {
+            mc.options.keyUse.setDown(true);
+            bowKeyDown = true;
+        }
+
+        return true;
     }
 
     /** Moves a loaded crossbow from the inventory into the hotbar. True when something was moved. */
@@ -876,7 +958,7 @@ public class CrossbowRagebot extends Module {
 
     private boolean isLoaded(int slot) {
         ItemStack stack = mc.player.getInventory().getItem(slot);
-        return stack.getItem() instanceof CrossbowItem && CrossbowItem.isCharged(stack) && (bowSpam() != null || tickCounter - shotAt[slot] > SHOT_LIMBO_TICKS);
+        return stack.getItem() instanceof CrossbowItem && CrossbowItem.isCharged(stack) && (rapid() || tickCounter - shotAt[slot] > SHOT_LIMBO_TICKS);
     }
 
     private boolean isInLimbo(int slot) {
@@ -942,7 +1024,7 @@ public class CrossbowRagebot extends Module {
 
         for (int slot = 0; slot < mc.player.getInventory().getContainerSize(); slot++) {
             ItemStack stack = mc.player.getInventory().getItem(slot);
-            if (mode.get() == Mode.Firework ? stack.getItem() instanceof FireworkRocketItem : stack.getItem() instanceof ArrowItem) count += stack.getCount();
+            if (stack.getItem() instanceof ArrowItem) count += stack.getCount();
         }
 
         return count;
@@ -965,9 +1047,7 @@ public class CrossbowRagebot extends Module {
             InvUtils.swap(loaded, false);
         }
 
-        BowSpam spam = bowSpam();
-
-        if (sinceShot < (spam != null ? Math.max(1, spam.getCrossbowDelay()) : fireDelay.get())) {
+        if (sinceShot < (rapid() ? Math.max(1, rapidDelay.get()) : fireDelay.get())) {
             // Keep the aim on the target until the next shot is allowed
             Rotations.rotate(solution.yaw, solution.pitch, ROTATION_PRIORITY);
             return;
@@ -1007,7 +1087,7 @@ public class CrossbowRagebot extends Module {
         }
 
         // Bow Spam's way: switch to the crossbow just for the click and back, it does not wait for the crossbow to be charged again
-        boolean spamStyle = bowSpam() != null;
+        boolean spamStyle = rapid();
 
         firing = true;
 
@@ -1039,17 +1119,6 @@ public class CrossbowRagebot extends Module {
             return;
         }
 
-        if (mode.get() == Mode.Firework && !(mc.player.getOffhandItem().getItem() instanceof FireworkRocketItem) && !mc.player.isUsingItem()) {
-            FindItemResult rockets = InvUtils.find(stack -> stack.getItem() instanceof FireworkRocketItem);
-
-            if (rockets.found() && !rockets.isOffhand()) {
-                releaseKey();
-                event("SWAP", "firework rockets from slot %d to the offhand, the crossbow takes its projectile from there".formatted(rockets.slot()));
-                InvUtils.move().from(rockets.slot()).toOffhand();
-                return;
-            }
-        }
-
         if (empty != held) {
             if (!autoSwitch.get()) {
                 releaseKey();
@@ -1066,7 +1135,7 @@ public class CrossbowRagebot extends Module {
             boolean charged = mc.player.getTicksUsingItem() >= CrossbowItem.getChargeDuration(stack, mc.player);
 
             // Bow Spam mode: keep holding after the charge is full and let the shots come, until no target is left
-            if (charged && bowSpam() != null && candidateCount > 0) {
+            if (charged && rapid() && holdWanted()) {
                 loadEvent("hold:" + empty, "HOLD", "slot %d is charged, keeping the key down while %d targets are left (Bow Spam mode)".formatted(mc.player.getInventory().getSelectedSlot(), candidateCount));
                 holdUntil = tickCounter + 1;
                 press();
@@ -1105,7 +1174,7 @@ public class CrossbowRagebot extends Module {
 
     private void releaseKey() {
         // With Bow Spam the key stays down from the start of the charge, that is what keeps the shots coming
-        if (tickCounter <= holdUntil && bowSpam() != null) return;
+        if (tickCounter <= holdUntil && rapid()) return;
         if (!pressedByUs) return;
 
         mc.options.keyUse.setDown(false);
@@ -1197,7 +1266,7 @@ public class CrossbowRagebot extends Module {
      */
     private static Vec3 serverPosition(Entity entity) {
         var interpolation = entity.getInterpolation();
-        return interpolation.hasActiveInterpolation() ? interpolation.position() : entity.position();
+        return interpolation != null && interpolation.hasActiveInterpolation() ? interpolation.position() : entity.position();
     }
 
     /** How many ticks ahead of what is known the target is when the arrow is made on the server. */
@@ -1740,7 +1809,7 @@ public class CrossbowRagebot extends Module {
      */
     private double hitChance(Vec3 start, Vec3 own, float yaw, float pitch, double speed, double horizontal, AABB box, double margin, int limit) {
         Vec3 direction = Vec3.directionFromRotation(pitch, yaw);
-        AABB target = fireworkPhysics ? box.inflate(Math.max(0.3, fireworkBlast.get())) : box.inflate(0.3, 0.25, 0.3);
+        AABB target = fireworkPhysics ? box.inflate(Math.max(0.3, FIREWORK_BLAST)) : box.inflate(0.3, 0.25, 0.3);
         int hits = 0;
 
         for (double[] spread : SPREAD) {
@@ -3065,10 +3134,6 @@ public class CrossbowRagebot extends Module {
 
     public int getFollowedCount() {
         return statShots;
-    }
-
-    public boolean isFireworkMode() {
-        return mode.get() == Mode.Firework;
     }
 
     public int getArrowAmount() {

@@ -529,7 +529,7 @@ public class IslandSources {
             c.title = tr("crossbow-ragebot", "Crossbow Ragebot");
         }
 
-        sub.append("  ·  ").append(arrows).append(' ').append(crossbowRagebot.isFireworkMode() ? tr("crossbow-fireworks", "fireworks") : tr("crossbow-arrows", "arrows"));
+        sub.append("  ·  ").append(arrows).append(' ').append(tr("crossbow-arrows", "arrows"));
         sub.append("  ·  ").append(crossbowRagebot.loadedCount()).append(' ').append(tr("crossbow-loaded-count", "loaded"));
         if (durability >= 0) sub.append("  ·  ").append(Math.round(durability)).append("% ").append(tr("crossbow-durability", "durability"));
 
@@ -599,7 +599,7 @@ public class IslandSources {
         c.title = "%s  ×%d".formatted(tr("crossbow-switch-title", "Switching"), switchShown);
 
         StringBuilder sub = new StringBuilder(phaseText);
-        sub.append("  ·  ").append(arrows).append(' ').append(crossbowRagebot.isFireworkMode() ? tr("crossbow-fireworks", "fireworks") : tr("crossbow-arrows", "arrows"));
+        sub.append("  ·  ").append(arrows).append(' ').append(tr("crossbow-arrows", "arrows"));
         sub.append("  ·  ").append(crossbowRagebot.loadedCount()).append(' ').append(tr("crossbow-loaded-count", "loaded"));
         if (durability >= 0) sub.append("  ·  ").append(Math.round(durability)).append("% ").append(tr("crossbow-durability", "durability"));
         c.subtitle = sub.toString();
