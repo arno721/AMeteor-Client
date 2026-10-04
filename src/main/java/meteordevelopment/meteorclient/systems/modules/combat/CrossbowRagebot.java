@@ -1434,7 +1434,7 @@ public class CrossbowRagebot extends Module {
 
         if (entity instanceof AgeableMob ageable && ageable.isBaby() && !attackBabies.get()) return false;
         if (entity instanceof NeutralMob && !attackNeutral.get()) return false;
-        if (skipClosedShulkers.get() && entity instanceof Shulker shulker && shulker.getRawPeekAmount() == 0) return false;
+        if (skipClosedShulkers.get() && entity instanceof Shulker shulker && shulker.getClientPeekAmount(1.0F) <= 0) return false;
 
         return !(ignoreInvisible.get() && entity.isInvisible());
     }
