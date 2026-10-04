@@ -4451,6 +4451,8 @@
     "module.crossbow-ragebot.group.render": "渲染",
     "module.crossbow-ragebot.setting.auto-switch.name": "自動切換",
     "module.crossbow-ragebot.setting.auto-switch.description": "在快捷欄的弩之間切換:切到已裝填的來射擊,切到空的來裝填。",
+    "module.crossbow-ragebot.setting.offhand-mode.name": "副手模式",
+    "module.crossbow-ragebot.setting.offhand-mode.description": "使用副手的弩:從副手裝填並射擊,不動主手。",
     "module.crossbow-ragebot.setting.auto-load.name": "自動裝填",
     "module.crossbow-ragebot.setting.auto-load.description": "自動為空的弩上膛。需要箭矢。",
     "module.crossbow-ragebot.setting.preload.name": "預先裝填",

@@ -4451,6 +4451,8 @@
     "module.crossbow-ragebot.group.render": "Render",
     "module.crossbow-ragebot.setting.auto-switch.name": "Auto Switch",
     "module.crossbow-ragebot.setting.auto-switch.description": "Switches between the crossbows in your hotbar: to a loaded one to shoot, to an empty one to load it.",
+    "module.crossbow-ragebot.setting.offhand-mode.name": "Offhand Mode",
+    "module.crossbow-ragebot.setting.offhand-mode.description": "Uses the crossbow in your offhand: it is loaded and shot from there, and your main hand is left alone.",
     "module.crossbow-ragebot.setting.auto-load.name": "Auto Load",
     "module.crossbow-ragebot.setting.auto-load.description": "Charges empty crossbows by itself. Needs arrows.",
     "module.crossbow-ragebot.setting.preload.name": "Preload",

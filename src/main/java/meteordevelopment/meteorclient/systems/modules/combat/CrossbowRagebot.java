@@ -127,6 +127,13 @@ public class CrossbowRagebot extends Module {
         .build()
     );
 
+    private final Setting<Boolean> offhandMode = sgGeneral.add(new BoolSetting.Builder()
+        .name("offhand-mode")
+        .description("Uses the crossbow in your offhand: it is loaded and shot from there, and your main hand is left alone.")
+        .defaultValue(false)
+        .build()
+    );
+
     private final Setting<Boolean> autoLoad = sgGeneral.add(new BoolSetting.Builder()
         .name("auto-load")
         .description("Charges empty crossbows by itself. Needs arrows.")
@@ -681,7 +688,9 @@ public class CrossbowRagebot extends Module {
     /** Ticks the client may need to show a crossbow as loaded after it was let go. */
     private static final int LOADING_LIMBO_TICKS = 4;
 
-    private final int[] shotAt = new int[9];
+    /** The slot number that stands for the offhand. */
+    private static final int OFFHAND_SLOT = 40;
+    private final int[] shotAt = new int[OFFHAND_SLOT + 1];
     private int releasedAt = -1000;
     private int lastShotTarget = -1;
     /** Whether the shot is good enough. The switch mode shoots at a low chance too, as long as the arrow can get there. */
@@ -817,13 +826,13 @@ public class CrossbowRagebot extends Module {
             return;
         }
 
-        int held = mc.player.getInventory().getSelectedSlot();
+        int held = offhandMode.get() ? OFFHAND_SLOT : mc.player.getInventory().getSelectedSlot();
         int loaded = findSlot(crossbows, held, true);
 
         // The speed depends on what is loaded, firework rockets are slower than arrows
-        fireworkPhysics = loaded >= 0 ? isFireworkLoaded(mc.player.getInventory().getItem(loaded)) : false;
-        if (loaded >= 0 && fireworkPhysics) fireworkTicks = fireworkTicksOf(mc.player.getInventory().getItem(loaded));
-        double speed = loaded >= 0 ? speedOf(mc.player.getInventory().getItem(loaded)) : fireworkPhysics ? FIREWORK_SPEED : ARROW_SPEED;
+        fireworkPhysics = loaded >= 0 ? isFireworkLoaded(stackAt(loaded)) : false;
+        if (loaded >= 0 && fireworkPhysics) fireworkTicks = fireworkTicksOf(stackAt(loaded));
+        double speed = loaded >= 0 ? speedOf(stackAt(loaded)) : fireworkPhysics ? FIREWORK_SPEED : ARROW_SPEED;
         chooseTarget(speed);
 
         // Bow Spam mode: the key stays down for as long as there is something left to shoot at
@@ -851,7 +860,7 @@ public class CrossbowRagebot extends Module {
         }
 
         // Out of loaded crossbows in the hotbar: bring a loaded one from the inventory, Bow Spam style
-        if (target != null && solution != null && loaded < 0 && spam && searchInventory.get()
+        if (target != null && solution != null && loaded < 0 && spam && searchInventory.get() && !offhandMode.get()
             && shotWorthTaking() && pullLoadedCrossbow()) {
             Rotations.rotate(solution.yaw, solution.pitch, ROTATION_PRIORITY);
             return;
@@ -944,7 +953,24 @@ public class CrossbowRagebot extends Module {
         return true;
     }
 
+    private InteractionHand hand() {
+        return offhandMode.get() ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+    }
+
+    private ItemStack handStack() {
+        return mc.player.getItemInHand(hand());
+    }
+
+    private ItemStack stackAt(int slot) {
+        return slot == OFFHAND_SLOT ? mc.player.getOffhandItem() : mc.player.getInventory().getItem(slot);
+    }
+
     private int[] hotbarCrossbows() {
+        if (offhandMode.get()) {
+            ItemStack stack = mc.player.getOffhandItem();
+            return stack.getItem() instanceof CrossbowItem && usable(stack) ? new int[] {OFFHAND_SLOT} : new int[0];
+        }
+
         int count = 0;
         int[] slots = new int[9];
 
@@ -957,7 +983,7 @@ public class CrossbowRagebot extends Module {
     }
 
     private boolean isLoaded(int slot) {
-        ItemStack stack = mc.player.getInventory().getItem(slot);
+        ItemStack stack = stackAt(slot);
         return stack.getItem() instanceof CrossbowItem && CrossbowItem.isCharged(stack) && (rapid() || tickCounter - shotAt[slot] > SHOT_LIMBO_TICKS);
     }
 
@@ -981,7 +1007,7 @@ public class CrossbowRagebot extends Module {
 
     private boolean matches(int slot, boolean loaded) {
         if (loaded) return isLoaded(slot);
-        return !isInLimbo(slot) && !CrossbowItem.isCharged(mc.player.getInventory().getItem(slot));
+        return !isInLimbo(slot) && !CrossbowItem.isCharged(stackAt(slot));
     }
 
     private static boolean isFireworkLoaded(ItemStack crossbow) {
@@ -1062,7 +1088,7 @@ public class CrossbowRagebot extends Module {
     private void fire(int slot) {
         if (mc.player == null || mc.gameMode == null) return;
 
-        ItemStack stack = mc.player.getMainHandItem();
+        ItemStack stack = handStack();
         if (!(stack.getItem() instanceof CrossbowItem) || !CrossbowItem.isCharged(stack)) return;
 
         // The turn that was just sent: while this runs it is the rotation of the player
@@ -1087,18 +1113,18 @@ public class CrossbowRagebot extends Module {
         }
 
         // Bow Spam's way: switch to the crossbow just for the click and back, it does not wait for the crossbow to be charged again
-        boolean spamStyle = rapid();
+        boolean spamStyle = rapid() && !offhandMode.get();
 
         firing = true;
 
         try {
             if (spamStyle) InvUtils.swap(slot, true);
-            mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
+            mc.gameMode.useItem(mc.player, hand());
             if (spamStyle) InvUtils.swapBack();
         } finally {
             firing = false;
         }
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        mc.player.swing(hand());
 
         // The server takes a moment to tell that it is empty. Using it again now would start charging it by accident.
         shotAt[slot] = tickCounter;
@@ -1128,7 +1154,7 @@ public class CrossbowRagebot extends Module {
             InvUtils.swap(empty, false);
         }
 
-        ItemStack stack = mc.player.getMainHandItem();
+        ItemStack stack = handStack();
         if (!(stack.getItem() instanceof CrossbowItem)) return;
 
         if (mc.player.isUsingItem() && mc.player.getUseItem().getItem() instanceof CrossbowItem) {
@@ -1154,7 +1180,9 @@ public class CrossbowRagebot extends Module {
             // in the direction you look, before this module has turned.
             releaseKey();
         } else {
-            loadEvent("charge:" + empty, "CHARGE", "charging slot %d (%d ticks needed)".formatted(mc.player.getInventory().getSelectedSlot(), CrossbowItem.getChargeDuration(stack, mc.player)));
+            loadEvent("charge:" + empty, "CHARGE", "charging slot %d (%d ticks needed)".formatted(empty, CrossbowItem.getChargeDuration(stack, mc.player)));
+            // The use key would click the main hand first, so the offhand is started directly
+            if (offhandMode.get()) mc.gameMode.useItem(mc.player, InteractionHand.OFF_HAND);
             press();
         }
     }
@@ -3075,8 +3103,8 @@ public class CrossbowRagebot extends Module {
      * (the game for a held key, Bow Spam) would otherwise shoot wherever the player looks.
      */
     public float[] aimForUse(Player player, InteractionHand hand) {
-        if (!isActive() || player != mc.player || hand != InteractionHand.MAIN_HAND || solution == null || target == null) return null;
-        if (!firing && !(player.getMainHandItem().getItem() instanceof CrossbowItem && CrossbowItem.isCharged(player.getMainHandItem()))) return null;
+        if (!isActive() || player != mc.player || hand != hand() || solution == null || target == null) return null;
+        if (!firing && !(player.getItemInHand(hand).getItem() instanceof CrossbowItem && CrossbowItem.isCharged(player.getItemInHand(hand)))) return null;
 
         return new float[] {solution.yaw, solution.pitch};
     }
@@ -3150,6 +3178,8 @@ public class CrossbowRagebot extends Module {
             if (stack.getItem() instanceof CrossbowItem && CrossbowItem.isCharged(stack)) count++;
         }
 
+        if (offhandMode.get() && mc.player.getOffhandItem().getItem() instanceof CrossbowItem && CrossbowItem.isCharged(mc.player.getOffhandItem())) count++;
+
         return count;
     }
 
@@ -3157,9 +3187,9 @@ public class CrossbowRagebot extends Module {
     public double getDurabilityPercent() {
         if (mc.player == null) return -1;
 
-        ItemStack stack = mc.player.getMainHandItem();
+        ItemStack stack = handStack();
 
-        if (!(stack.getItem() instanceof CrossbowItem)) {
+        if (!(stack.getItem() instanceof CrossbowItem) && !offhandMode.get()) {
             stack = ItemStack.EMPTY;
 
             for (int slot = 0; slot < 9; slot++) {
